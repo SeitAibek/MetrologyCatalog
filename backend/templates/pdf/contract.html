@@ -1,0 +1,85 @@
+<html>
+<head>
+<style>
+    @font-face {
+        font-family: FreeSans;
+        src: url("fonts/FreeSans.ttf");
+    }
+    body { font-family: FreeSans; font-size: 10pt; }
+    h1 { font-size: 14pt; text-align: center; }
+    .subtitle { text-align: center; font-size: 11pt; }
+    .date { text-align: center; font-size: 10pt; }
+    h2 { font-size: 12pt; margin-top: 16px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    td { border: 1px solid #999; padding: 6px; vertical-align: top; font-size: 9pt; }
+    td.label { font-weight: bold; width: 40%; }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+</style>
+</head>
+<body>
+    <h1>ДОГОВОР НА ОКАЗАНИЕ МЕТРОЛОГИЧЕСКИХ УСЛУГ</h1>
+    <div class="subtitle">№ {{ contract.contract_number }}</div>
+    <div class="date">г. Астана, {% now "d.m.Y" %}</div>
+
+    <h2>1. СТОРОНЫ ДОГОВОРА</h2>
+    <table>
+        <tr>
+            <td class="bold center">ИСПОЛНИТЕЛЬ</td>
+            <td class="bold center">ЗАКАЗЧИК</td>
+        </tr>
+        <tr>
+            <td>{{ executor_name }}<br/>БИН: {{ executor_bin }}<br/>Адрес: {{ executor_address }}<br/>Тел: {{ executor_phone }}</td>
+            <td>{{ client_name }}<br/>Тел: {{ client_phone }}<br/>Email: {{ client_email }}</td>
+        </tr>
+    </table>
+
+    <h2>2. ПРЕДМЕТ ДОГОВОРА</h2>
+    <p>Исполнитель обязуется оказать метрологические услуги, а Заказчик обязуется принять и оплатить их в соответствии с условиями настоящего договора.</p>
+    <table>
+        <tr><td class="label">Вид услуги:</td><td>{{ service_name }}</td></tr>
+        <tr><td class="label">Описание:</td><td>{{ service_description }}</td></tr>
+        <tr><td class="label">Стандарт/ГОСТ:</td><td>{{ service_standard }}</td></tr>
+        <tr><td class="label">Номер заявки:</td><td>{{ order.order_number }}</td></tr>
+        {% if order.due_date %}
+        <tr><td class="label">Срок исполнения:</td><td>{{ order.due_date|date:"d.m.Y" }}</td></tr>
+        {% endif %}
+    </table>
+
+    <h2>3. СТОИМОСТЬ И ПОРЯДОК ОПЛАТЫ</h2>
+    <table>
+        <tr><td class="label">Сумма договора:</td><td>{{ order.total_price }} тенге</td></tr>
+        <tr><td class="label">НДС:</td><td>Включён</td></tr>
+        <tr><td class="label">Порядок оплаты:</td><td>Оплата производится до начала оказания услуг</td></tr>
+    </table>
+
+    <h2>4. РЕКВИЗИТЫ СТОРОН</h2>
+    <table>
+        <tr>
+            <td class="bold center">ИСПОЛНИТЕЛЬ</td>
+            <td class="bold center">ЗАКАЗЧИК</td>
+        </tr>
+        <tr>
+            <td>{{ executor_name }}<br/>БИН: {{ executor_bin }}<br/>Адрес: {{ executor_address }}<br/>Тел: {{ executor_phone }}<br/>Банк: {{ executor_bank }}</td>
+            <td>{{ client_name }}<br/>Тел: {{ client_phone }}<br/>Email: {{ client_email }}</td>
+        </tr>
+    </table>
+
+    <h2>5. ПОДПИСИ СТОРОН</h2>
+    <table>
+        <tr>
+            <td>
+                Директор:<br/>
+                {% if contract.director_signed %}Подписано ЭЦП<br/>{{ contract.director_signed_at|date:"d.m.Y H:i" }}{% else %}Ожидает подписи{% endif %}
+                <br/><br/>{{ executor_name }}
+            </td>
+            <td>
+                Заказчик:<br/>
+                {% if contract.client_signed %}Подписано ЭЦП<br/>{{ contract.client_signed_at|date:"d.m.Y H:i" }}{% else %}Ожидает подписи{% endif %}
+                <br/><br/>{{ client_name }}
+            </td>
+        </tr>
+    </table>
+    <p>Статус договора: {{ contract.get_status_display }}</p>
+</body>
+</html>

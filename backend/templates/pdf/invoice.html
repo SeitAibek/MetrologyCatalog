@@ -1,0 +1,64 @@
+<html>
+<head>
+<style>
+    @font-face {
+        font-family: FreeSans;
+        src: url("fonts/FreeSans.ttf");
+    }
+    body { font-family: FreeSans; font-size: 10pt; }
+    h1 { font-size: 16pt; text-align: center; }
+    .subtitle { text-align: center; font-size: 11pt; }
+    h2 { font-size: 10pt; margin-top: 12px; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    td, th { border: 1px solid #999; padding: 4px; font-size: 9pt; }
+    th { background-color: #d3d3d3; font-weight: bold; text-align: left; }
+    .total { text-align: right; font-size: 12pt; font-weight: bold; margin-top: 8px; }
+    .vat { text-align: right; font-size: 9pt; color: #888; }
+    .sign-row td { border: none; font-size: 9pt; padding-top: 20px; }
+</style>
+</head>
+<body>
+    <h1>СЧЁТ НА ОПЛАТУ</h1>
+    <div class="subtitle">№ {{ invoice_number }} от {{ today }}</div>
+
+    <h2>Поставщик:</h2>
+    <p>{{ executor_name }}<br/>
+    БИН: {{ executor_bin }}&nbsp;&nbsp;&nbsp;Адрес: {{ executor_address }}<br/>
+    Тел: {{ executor_phone }}&nbsp;&nbsp;&nbsp;Банк: {{ executor_bank }}</p>
+
+    <h2>Покупатель:</h2>
+    <p>{{ client_name }}<br/>
+    Тел: {{ client_phone }}&nbsp;&nbsp;&nbsp;Email: {{ client_email }}</p>
+
+    <table>
+        <tr>
+            <th>№</th>
+            <th>Наименование услуги</th>
+            <th>Ед.изм.</th>
+            <th>Кол-во</th>
+            <th>Сумма</th>
+        </tr>
+        <tr>
+            <td>1</td>
+            <td>{{ service_name }}<br/>(заявка № {{ order_number }})</td>
+            <td>усл.</td>
+            <td>1</td>
+            <td>{{ invoice_total }} ₸</td>
+        </tr>
+    </table>
+
+    <div class="total">Итого к оплате: {{ invoice_total }} тенге</div>
+    <div class="vat">НДС: включён в стоимость</div>
+
+    <h2>Реквизиты для оплаты:</h2>
+    <p>Банк: {{ executor_bank }}<br/>
+    Назначение платежа: Оплата по договору, заявка № {{ order_number }}</p>
+
+    <table>
+        <tr class="sign-row">
+            <td>Финансовый директор: _______________</td>
+            <td style="text-align: right;">М.П.</td>
+        </tr>
+    </table>
+</body>
+</html>

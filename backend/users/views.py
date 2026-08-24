@@ -22,8 +22,10 @@ from .permissions import has_role
 def _user_payload(user: User) -> dict:
     return {
         "id": user.id,
+        "id_number": user.id_number,
         "email": user.email,
         "fullName": user.full_name,
+        "phone": user.phone,
         "role": user.role,
         "companyId": user.company_id,
         "labId": user.lab_id,

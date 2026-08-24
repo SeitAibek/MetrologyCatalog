@@ -68,7 +68,7 @@ def orders_list(request):
     client_id = request.data.get("client_id")
     service_id = request.data.get("service_id")
     lab_id = request.data.get("lab_id")
-    due_date = request.data.get("due_date")
+    due_date = request.data.get("due_date") 
     order_items = request.data.get("order_items")
     client_comment = request.data.get("client_comment")
 

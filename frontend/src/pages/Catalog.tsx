@@ -13,10 +13,8 @@ export default function Catalog() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedType, setSelectedType] = useState('');
+  const [selectedType, /*setSelectedType*/] = useState('');
 
-  // Список типов приборов для фильтра
-  const measurementTypes = ['Манометр', 'Амперметр', 'Вольтметр', 'Термопара', 'Осциллограф'];
 
   // Загружаем услуги при монтировании компонента
   useEffect(() => {
@@ -51,11 +49,6 @@ export default function Catalog() {
         s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         s.description?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-    }
-
-    // Фильтр по типу средства измерений
-    if (selectedType) {
-      filtered = filtered.filter(s => s.measurementType === selectedType);
     }
 
     setFilteredServices(filtered);
@@ -113,19 +106,6 @@ export default function Catalog() {
               style={{ fontFamily: 'inherit', marginBottom: 0 }}
             />
           </div>
-          <div className="min-w-[200px]">
-            <select
-              value={selectedType}
-              onChange={e => setSelectedType(e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all cursor-pointer"
-              style={{ fontFamily: 'inherit', marginBottom: 0 }}
-            >
-              <option value="">Все типы приборов</option>
-              {measurementTypes.map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-          </div>
         </div>
 
         {/* Счётчик результатов */}
@@ -151,9 +131,6 @@ export default function Catalog() {
                   <h3 className="font-semibold text-[#0A2E5C] leading-tight" style={{ margin: 0, fontSize: '1rem' }}>
                     {service.name}
                   </h3>
-                  <span className="text-xs font-semibold bg-[#00B2FF]/10 text-[#00B2FF] px-3 py-1 rounded-full whitespace-nowrap shrink-0">
-                    {service.measurementType}
-                  </span>
                 </div>
 
                 {/* Описание */}
@@ -163,12 +140,6 @@ export default function Catalog() {
 
                 {/* Детали услуги — цена, срок, лаборатория и нормативный документ */}
                 <div className="bg-gray-50 rounded-xl p-4 mb-4 flex flex-col gap-2.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-400">Стоимость</span>
-                    <span className="text-sm font-bold text-[#0A2E5C]">
-                      {service.price != null ? `${service.price.toLocaleString()} ₸` : 'По запросу'}
-                    </span>
-                  </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-400">Срок</span>
                     <span className="text-sm font-semibold text-gray-700">{service.durationDays} рабочих дней</span>

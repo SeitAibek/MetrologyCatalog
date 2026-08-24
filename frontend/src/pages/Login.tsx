@@ -92,7 +92,6 @@ export default function Login() {
               ))}
             </div>
           </div>
-          <p className="text-white/40 text-sm">© 2026 MetrologyCatalog</p>
         </div>
       </div>
 

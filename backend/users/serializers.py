@@ -3,10 +3,11 @@ from .models import User
 
 
 class UserSerializer(serializers.ModelSerializer):
+    active = serializers.BooleanField(source="is_active")
+
     class Meta:
         model = User
         fields = [
-            "id", "email", "role", "company_id", "lab_id",
-            "full_name", "phone", "is_active",
+            "id", "id_number", "email", "role", "company_id", "lab_id",
+            "full_name", "phone", "active",
         ]
-        # password_hash сознательно не включён — не должен утекать в ответах

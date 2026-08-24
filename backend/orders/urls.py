@@ -35,4 +35,5 @@ urlpatterns = [
     path("pdf/certificate/<int:order_id>/", views.download_certificate, name="certificate-download"),
     path("pdf/invoice/<int:order_id>/", views.download_invoice, name="invoice-download"),
     path("results/order/<int:order_id>/", views.get_results_by_order, name="results-by-order"),
+    path("stats/", views.get_stats, name="stats"),
 ]

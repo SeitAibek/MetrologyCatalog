@@ -467,9 +467,6 @@ export default function Home() {
               </ul>
             </div>
           </div>
-          <div className="border-t border-white/10 mt-12 pt-8 text-center text-white/40 text-sm">
-            © 2026 MetrologyCatalog. Все права защищены.
-          </div>
         </div>
       </footer>
 

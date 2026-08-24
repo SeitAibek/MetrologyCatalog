@@ -23,14 +23,6 @@ def get_user_id(token: str) -> int:
     return int(get_claims(token)["sub"])
 
 
-def get_role(token: str) -> str:
-    return get_claims(token)["role"]
-
-
-def get_email(token: str) -> str:
-    return get_claims(token)["email"]
-
-
 def get_lab_id(token: str) -> int | None:
     return get_claims(token).get("labId")
 

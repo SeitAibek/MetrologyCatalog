@@ -168,3 +168,22 @@ class Contract(models.Model):
     @property
     def is_fully_signed(self):
         return self.is_trio_signed and self.client_signed and self.gen_director_signed
+
+    def reset_approval_state(self):
+        self.approver_signed = False
+        self.approver_signed_at = None
+        self.approver_signed_by = None
+        self.financier_signed = False
+        self.financier_signed_at = None
+        self.financier_signed_by = None
+        self.director_signed = False
+        self.director_signed_at = None
+        self.director_signed_by = None
+        self.client_signed = False
+        self.client_signed_at = None
+        self.client_signed_by = None
+        self.gen_director_signed = False
+        self.gen_director_signed_at = None
+        self.gen_director_signed_by = None
+        self.rejected_by_role = None
+        self.rejected_reason = None

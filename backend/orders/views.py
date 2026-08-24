@@ -9,10 +9,36 @@ from rest_framework.response import Response
 
 from users.models import User
 from users.permissions import has_role
+from laboratories.models import Laboratory
 from .models import Result, Order, OrderItem, Contract
 from .serializers import OrderSerializer, OrderItemSerializer, ContractSerializer, ResultSerializer
 from . import email_utils, pdf_service
 from notifications import services as notification_services
+
+
+def _get_order_or_404(order_id, message="Заказ не найден"):
+    try:
+        return Order.objects.get(id=order_id), None
+    except Order.DoesNotExist:
+        return None, Response({"message": message}, status=404)
+
+
+def _get_contract_or_404(order_id):
+    try:
+        return Contract.objects.get(order_id=order_id), None
+    except Contract.DoesNotExist:
+        return None, Response({"message": "Договор не найден"}, status=404)
+
+
+def _create_order_items(order, items):
+    for item in items:
+        OrderItem.objects.create(
+            order=order,
+            device_type=item.get("device_type"),
+            model=item.get("model"),
+            serial_number=item.get("serial_number"),
+            quantity=item.get("quantity"),
+        )
 
 
 @api_view(["GET"])
@@ -68,7 +94,7 @@ def orders_list(request):
     client_id = request.data.get("client_id")
     service_id = request.data.get("service_id")
     lab_id = request.data.get("lab_id")
-    due_date = request.data.get("due_date") 
+    due_date = request.data.get("due_date")
     order_items = request.data.get("order_items")
     client_comment = request.data.get("client_comment")
 
@@ -102,14 +128,7 @@ def orders_list(request):
             client_comment=client_comment,
         )
 
-        for item in order_items:
-            OrderItem.objects.create(
-                order=order,
-                device_type=item.get("device_type"),
-                model=item.get("model"),
-                serial_number=item.get("serial_number"),
-                quantity=item.get("quantity"),
-            )
+        _create_order_items(order, order_items)
 
         Contract.objects.create(
             order=order,
@@ -150,10 +169,9 @@ def get_order_items(request, id):
 
 @api_view(["GET", "PUT"])
 def order_detail(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if request.method == "GET":
         return Response(OrderSerializer(order).data)
@@ -177,11 +195,7 @@ def order_detail(request, id):
     return Response(OrderSerializer(order).data)
 
 
-VALID_STATUSES = [
-    "pending_contract", "revision", "awaiting_approval", "awaiting_director",
-    "awaiting_payment", "pending_delivery", "awaiting_delivery", "received_in_lab",
-    "in_work", "under_review", "completed", "cancelled", "annulled", "terminated",
-]
+VALID_STATUSES = Order.Status.values
 
 
 @api_view(["PUT"])
@@ -191,10 +205,9 @@ def update_order_status(request, id):
     if not new_status or new_status not in VALID_STATUSES:
         return Response({"message": f"Недопустимый статус: {new_status}"}, status=400)
 
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     order.status = new_status
     order.save()
@@ -214,10 +227,9 @@ def update_order_status(request, id):
 @api_view(["PUT"])
 @permission_classes([has_role("manager")])
 def return_to_revision(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if order.status != "pending_contract":
         return Response(
@@ -241,10 +253,9 @@ def return_to_revision(request, id):
 @api_view(["PUT"])
 @permission_classes([has_role("client")])
 def resubmit_order(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if order.status != "revision":
         return Response(
@@ -275,14 +286,7 @@ def resubmit_order(request, id):
 
     with transaction.atomic():
         OrderItem.objects.filter(order_id=id).delete()
-        for item in order_items:
-            OrderItem.objects.create(
-                order=order,
-                device_type=item.get("device_type"),
-                model=item.get("model"),
-                serial_number=item.get("serial_number"),
-                quantity=item.get("quantity"),
-            )
+        _create_order_items(order, order_items)
 
     notification_services.notify_managers_resubmit(order.order_number)
 
@@ -292,10 +296,9 @@ def resubmit_order(request, id):
 @api_view(["PUT"])
 @permission_classes([has_role("manager")])
 def send_invoice(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if order.status != "awaiting_payment":
         return Response(
@@ -314,10 +317,9 @@ def send_invoice(request, id):
 @api_view(["PUT"])
 @permission_classes([has_role("client")])
 def upload_receipt(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if order.status != "awaiting_payment":
         return Response(
@@ -359,10 +361,9 @@ def upload_receipt(request, id):
 @api_view(["GET"])
 @permission_classes([has_role("financier", "manager")])
 def get_receipt(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if not order.payment_receipt:
         return Response({"message": "Чек ещё не загружен"}, status=404)
@@ -376,10 +377,9 @@ def get_receipt(request, id):
 
 @api_view(["PUT"])
 def set_price(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if order.status != "awaiting_payment":
         return Response(
@@ -388,7 +388,11 @@ def set_price(request, id):
         )
 
     price = request.data.get("price")
-    if not price or float(price) <= 0:
+    try:
+        price_is_valid = price is not None and float(price) > 0
+    except (TypeError, ValueError):
+        price_is_valid = False
+    if not price_is_valid:
         return Response({"message": "Цена должна быть больше 0"}, status=400)
 
     order.price = price
@@ -401,10 +405,9 @@ def set_price(request, id):
 
 @api_view(["PUT"])
 def confirm_payment(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     order.status = "pending_delivery"
 
@@ -426,10 +429,9 @@ def confirm_payment(request, id):
 @api_view(["PUT"])
 @permission_classes([has_role("manager")])
 def notify_director(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if order.status != "pending_delivery":
         return Response(
@@ -448,10 +450,9 @@ def notify_director(request, id):
 @api_view(["PUT"])
 @permission_classes([has_role("director", "gen_director")])
 def assign_to_lab(request, id):
-    try:
-        order = Order.objects.get(id=id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заказ не найден"}, status=404)
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
 
     if order.status != "awaiting_delivery":
         return Response(
@@ -463,7 +464,6 @@ def assign_to_lab(request, id):
     if not lab_id:
         return Response({"message": "ID лаборатории обязателен"}, status=400)
 
-    from laboratories.models import Laboratory
     try:
         lab = Laboratory.objects.get(id=lab_id)
     except Laboratory.DoesNotExist:
@@ -479,20 +479,18 @@ def assign_to_lab(request, id):
 
     return Response(OrderSerializer(order).data)
 
- 
+
 @api_view(["GET", "POST"])
 def contract_detail(request, order_id):
     if request.method == "GET":
-        try:
-            contract = Contract.objects.get(order_id=order_id)
-        except Contract.DoesNotExist:
-            return Response({"message": "Договор не найден"}, status=404)
+        contract, err = _get_contract_or_404(order_id)
+        if err:
+            return err
         return Response(ContractSerializer(contract).data)
 
-    try:
-        order = Order.objects.get(id=order_id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заявка не найдена"}, status=404)
+    order, err = _get_order_or_404(order_id, message="Заявка не найдена")
+    if err:
+        return err
 
     file_data = request.data.get("file_data")
     file_name = request.data.get("file_name")
@@ -515,23 +513,7 @@ def contract_detail(request, order_id):
     contract.contract_file = file_data
     contract.contract_file_name = file_name
     contract.status = "pending_approval"
-    contract.approver_signed = False
-    contract.approver_signed_at = None
-    contract.approver_signed_by = None
-    contract.financier_signed = False
-    contract.financier_signed_at = None
-    contract.financier_signed_by = None
-    contract.director_signed = False
-    contract.director_signed_at = None
-    contract.director_signed_by = None
-    contract.client_signed = False
-    contract.client_signed_at = None
-    contract.client_signed_by = None
-    contract.gen_director_signed = False
-    contract.gen_director_signed_at = None
-    contract.gen_director_signed_by = None
-    contract.rejected_by_role = None
-    contract.rejected_reason = None
+    contract.reset_approval_state()
     contract.save()
 
     order.status = "awaiting_approval"
@@ -540,264 +522,206 @@ def contract_detail(request, order_id):
     notification_services.notify_parallel_approvers(order_id, order.order_number)
 
     return Response(ContractSerializer(contract).data)
- 
- 
+
+
 @api_view(["GET"])
 def download_contract_file(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
+    contract, err = _get_contract_or_404(order_id)
+    if err:
+        return err
     if not contract.contract_file:
         return Response({"message": "Файл договора ещё не загружен"}, status=404)
- 
+
     file_bytes = base64.b64decode(contract.contract_file)
     file_name = contract.contract_file_name or f"contract_{order_id}.pdf"
     content_type = "application/pdf" if file_name.endswith(".pdf") else "application/octet-stream"
- 
+
     response = HttpResponse(file_bytes, content_type=content_type)
     response["Content-Disposition"] = f'attachment; filename="{file_name}"'
     return response
- 
- 
+
+
 @api_view(["PUT"])
 def resubmit_for_approval(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
+    contract, err = _get_contract_or_404(order_id)
+    if err:
+        return err
     if not contract.contract_file:
         return Response({"message": "Сначала загрузите файл договора"}, status=400)
- 
+
     contract.status = "pending_approval"
-    contract.approver_signed = False
-    contract.approver_signed_at = None
-    contract.approver_signed_by = None
-    contract.financier_signed = False
-    contract.financier_signed_at = None
-    contract.financier_signed_by = None
-    contract.director_signed = False
-    contract.director_signed_at = None
-    contract.director_signed_by = None
-    contract.client_signed = False
-    contract.client_signed_at = None
-    contract.client_signed_by = None
-    contract.gen_director_signed = False
-    contract.gen_director_signed_at = None
-    contract.gen_director_signed_by = None
-    contract.rejected_by_role = None
-    contract.rejected_reason = None
+    contract.reset_approval_state()
     contract.save()
- 
+
     order = Order.objects.filter(id=order_id).first()
     if order:
         order.status = "awaiting_approval"
         order.save()
         notification_services.notify_parallel_approvers(order_id, order.order_number)
- 
+
     return Response(ContractSerializer(contract).data)
- 
- 
-def _check_trio_and_notify_client(order_id):
-    contract = Contract.objects.get(order_id=order_id)
-    if contract.is_trio_signed:
-        order = Order.objects.filter(id=order_id).first()
-        if order:
-            notification_services.notify_client_trio_signed(order.client_id, order_id, order.order_number)
- 
- 
+
+
+def _notify_client_if_trio_signed(contract):
+    if not contract.is_trio_signed:
+        return
+    order = Order.objects.filter(id=contract.order_id).first()
+    if order:
+        notification_services.notify_client_trio_signed(order.client_id, order.id, order.order_number)
+
+
+ROLE_SIGN_LABELS = {
+    "approver": "Согласующий",
+    "financier": "Финансист",
+    "director": "Директор",
+}
+
+
+def _sign_role(request, order_id, role):
+    contract, err = _get_contract_or_404(order_id)
+    if err:
+        return err
+    if contract.status != "pending_approval":
+        return Response({"message": "Договор не на согласовании"}, status=400)
+    if not contract.contract_file:
+        return Response({"message": "Менеджер ещё не загрузил файл договора"}, status=400)
+    if getattr(contract, f"{role}_signed"):
+        return Response({"message": f"{ROLE_SIGN_LABELS[role]} уже подписал"}, status=400)
+
+    setattr(contract, f"{role}_signed", True)
+    setattr(contract, f"{role}_signed_at", timezone.now())
+    setattr(contract, f"{role}_signed_by_id", request.data.get("user_id"))
+    contract.save()
+
+    _notify_client_if_trio_signed(contract)
+
+    return Response(ContractSerializer(contract).data)
+
+
 @api_view(["PUT"])
 def sign_by_approver(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
-    if contract.status != "pending_approval":
-        return Response({"message": "Договор не на согласовании"}, status=400)
-    if not contract.contract_file:
-        return Response({"message": "Менеджер ещё не загрузил файл договора"}, status=400)
-    if contract.approver_signed:
-        return Response({"message": "Согласующий уже подписал"}, status=400)
- 
-    contract.approver_signed = True
-    contract.approver_signed_at = timezone.now()
-    contract.approver_signed_by_id = request.data.get("user_id")
-    contract.save()
- 
-    _check_trio_and_notify_client(order_id)
- 
-    return Response(ContractSerializer(Contract.objects.get(order_id=order_id)).data)
- 
- 
+    return _sign_role(request, order_id, "approver")
+
+
 @api_view(["PUT"])
 def sign_by_financier(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
-    if contract.status != "pending_approval":
-        return Response({"message": "Договор не на согласовании"}, status=400)
-    if not contract.contract_file:
-        return Response({"message": "Менеджер ещё не загрузил файл договора"}, status=400)
-    if contract.financier_signed:
-        return Response({"message": "Финансист уже подписал"}, status=400)
- 
-    contract.financier_signed = True
-    contract.financier_signed_at = timezone.now()
-    contract.financier_signed_by_id = request.data.get("user_id")
-    contract.save()
- 
-    _check_trio_and_notify_client(order_id)
- 
-    return Response(ContractSerializer(Contract.objects.get(order_id=order_id)).data)
- 
- 
+    return _sign_role(request, order_id, "financier")
+
+
 @api_view(["PUT"])
 def sign_by_director(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
-    if contract.status != "pending_approval":
-        return Response({"message": "Договор не на согласовании"}, status=400)
-    if not contract.contract_file:
-        return Response({"message": "Менеджер ещё не загрузил файл договора"}, status=400)
-    if contract.director_signed:
-        return Response({"message": "Директор уже подписал"}, status=400)
- 
-    contract.director_signed = True
-    contract.director_signed_at = timezone.now()
-    contract.director_signed_by_id = request.data.get("user_id")
-    contract.save()
- 
-    _check_trio_and_notify_client(order_id)
- 
-    return Response(ContractSerializer(Contract.objects.get(order_id=order_id)).data)
- 
- 
+    return _sign_role(request, order_id, "director")
+
+
 @api_view(["PUT"])
 def approve_contract(request, order_id):
+    # Отдельный URL (contracts/<id>/approve/), исторически дублирующий sign/approver/ — оставлен для обратной совместимости фронтенда.
     return sign_by_approver(request, order_id)
- 
- 
+
+
 @api_view(["PUT"])
 def sign_by_client(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
+    contract, err = _get_contract_or_404(order_id)
+    if err:
+        return err
     if not contract.is_trio_signed:
         return Response({"message": "Договор ещё не подписан всеми сторонами организации"}, status=400)
     if contract.client_signed:
         return Response({"message": "Клиент уже подписал"}, status=400)
- 
+
     contract.client_signed = True
     contract.client_signed_at = timezone.now()
     contract.client_signed_by_id = request.data.get("user_id")
     contract.save()
- 
+
     order = Order.objects.filter(id=order_id).first()
     if order:
         notification_services.notify_gen_director_for_signing(order_id, order.order_number)
- 
+
     return Response(ContractSerializer(contract).data)
 
- 
+
 @api_view(["PUT"])
 def sign_by_gen_director(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
+    contract, err = _get_contract_or_404(order_id)
+    if err:
+        return err
     if not contract.is_trio_signed:
         return Response({"message": "Тройка ещё не подписала договор"}, status=400)
     if not contract.client_signed:
         return Response({"message": "Клиент ещё не подписал договор"}, status=400)
     if contract.gen_director_signed:
         return Response({"message": "Ген.директор уже подписал"}, status=400)
- 
+
     contract.gen_director_signed = True
     contract.gen_director_signed_at = timezone.now()
     contract.gen_director_signed_by_id = request.data.get("user_id")
     contract.status = "signed"
     contract.registration_number = f"РЕГ-{timezone.now().strftime('%Y%m%d')}-{order_id}"
     contract.save()
- 
+
     order = Order.objects.filter(id=order_id).first()
     if order:
         order.status = "awaiting_payment"
         order.save()
         notification_services.notify_financiers_contract_signed(order_id, order.order_number)
- 
+
     return Response(ContractSerializer(contract).data)
- 
+
 
 @api_view(["PUT"])
 def reject_contract(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
- 
+    contract, err = _get_contract_or_404(order_id)
+    if err:
+        return err
+
     reason = request.data.get("reason")
     role = request.data.get("role") or "unknown"
- 
+
     contract.status = "rejected"
     contract.rejected_by_role = role
     contract.rejected_reason = reason
     contract.save()
- 
+
     order = Order.objects.filter(id=order_id).first()
     if order:
         order.status = "pending_contract"
         order.save()
         notification_services.notify_managers_rejected(order_id, order.order_number, reason or "Причина не указана")
- 
+
     return Response(ContractSerializer(contract).data)
- 
- 
+
+
+def _close_contract(request, order_id, action):
+    """action: 'annulled' или 'terminated' — совпадает и со статусом Contract, и Order."""
+    contract, err = _get_contract_or_404(order_id)
+    if err:
+        return err
+
+    contract.status = action
+    setattr(contract, f"{action}_at", timezone.now())
+    setattr(contract, f"{action}_by_id", request.data.get("user_id"))
+    setattr(contract, f"{action}_reason", request.data.get("reason"))
+    contract.save()
+
+    order = Order.objects.filter(id=order_id).first()
+    if order:
+        order.status = action
+        order.save()
+
+    return Response(ContractSerializer(contract).data)
+
+
 @api_view(["PUT"])
 def annul_contract(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
- 
-    contract.status = "annulled"
-    contract.annulled_at = timezone.now()
-    contract.annulled_by_id = request.data.get("user_id")
-    contract.annulled_reason = request.data.get("reason")
-    contract.save()
- 
-    order = Order.objects.filter(id=order_id).first()
-    if order:
-        order.status = "annulled"
-        order.save()
- 
-    return Response(ContractSerializer(contract).data)
- 
- 
+    return _close_contract(request, order_id, "annulled")
+
+
 @api_view(["PUT"])
 def terminate_contract(request, order_id):
-    try:
-        contract = Contract.objects.get(order_id=order_id)
-    except Contract.DoesNotExist:
-        return Response({"message": "Договор не найден"}, status=404)
- 
-    contract.status = "terminated"
-    contract.terminated_at = timezone.now()
-    contract.terminated_by_id = request.data.get("user_id")
-    contract.terminated_reason = request.data.get("reason")
-    contract.save()
- 
-    order = Order.objects.filter(id=order_id).first()
-    if order:
-        order.status = "terminated"
-        order.save()
- 
-    return Response(ContractSerializer(contract).data)
- 
- 
+    return _close_contract(request, order_id, "terminated")
+
+
 @api_view(["GET"])
 def download_contract(request, order_id):
     try:
@@ -805,14 +729,14 @@ def download_contract(request, order_id):
         order = Order.objects.get(id=order_id)
     except (Contract.DoesNotExist, Order.DoesNotExist):
         return Response({"message": "Договор не найден"}, status=404)
- 
+
     if contract.contract_file:
         file_bytes = base64.b64decode(contract.contract_file)
         file_name = contract.contract_file_name or f"contract_{order_id}.pdf"
         response = HttpResponse(file_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{file_name}"'
         return response
- 
+
     pdf_bytes = pdf_service.generate_contract_pdf(order, contract)
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="contract_{order_id}.pdf"'
@@ -821,9 +745,8 @@ def download_contract(request, order_id):
 
 @api_view(["GET"])
 def download_certificate(request, order_id):
-    try:
-        order = Order.objects.get(id=order_id)
-    except Order.DoesNotExist:
+    order, err = _get_order_or_404(order_id)
+    if err:
         return Response(status=404)
 
     result = Result.objects.filter(order_id=order_id).first()
@@ -837,10 +760,9 @@ def download_certificate(request, order_id):
 
 @api_view(["GET"])
 def download_invoice(request, order_id):
-    try:
-        order = Order.objects.get(id=order_id)
-    except Order.DoesNotExist:
-        return Response({"message": "Заявка не найдена"}, status=404)
+    order, err = _get_order_or_404(order_id, message="Заявка не найдена")
+    if err:
+        return err
 
     pdf_bytes = pdf_service.generate_invoice_pdf(order)
 

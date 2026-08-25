@@ -164,7 +164,7 @@ export default function Header() {
                       onClick={() => {
                         handleMarkRead(notif);
                         // Переходим на страницу роли
-                        if (['approver','director','financier'].includes(user?.role || '')) {
+                        if (['approver','director','financier','gen_director'].includes(user?.role || '')) {
                           setNotifOpen(false);
                           navigateTo(
                           user?.role === 'approver' ? '/approver' :

@@ -7,7 +7,7 @@ def create(user_id: int, order_id: int | None, message: str, notification_type: 
     Notification.objects.create(
         user_id=user_id,
         order_id=order_id,
-        message=message,
+        message=message[:255],
         notification_type=notification_type,
     )
 

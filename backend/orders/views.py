@@ -41,6 +41,23 @@ def _create_order_items(order, items):
         )
 
 
+def _validate_order_items(items):
+    for item in items:
+        if not item.get("device_type"):
+            return Response({"message": "Тип прибора обязателен"}, status=400)
+        if not item.get("serial_number"):
+            return Response({"message": "Серийный номер обязателен"}, status=400)
+        if not item.get("quantity") or item.get("quantity") <= 0:
+            return Response({"message": "Количество должно быть больше 0"}, status=400)
+    return None
+
+
+def _require_role(request, *allowed_roles):
+    if request.user.role not in allowed_roles:
+        return Response({"message": "Доступ запрещён"}, status=403)
+    return None
+
+
 @api_view(["GET"])
 @permission_classes([has_role("manager")])
 def get_stats(request):
@@ -52,6 +69,7 @@ def get_stats(request):
         "totalOrders": Order.objects.count(),
         "completedOrders": Order.objects.filter(status="completed").count(),
         "inWorkOrders": Order.objects.filter(status="in_work").count(),
+        "newOrders": Order.objects.filter(status="pending_contract").count(),
         "awaitingPayment": Order.objects.filter(status="awaiting_payment").count(),
         "totalRevenue": total_revenue,
         "totalClients": User.objects.filter(role="client").count(),
@@ -66,6 +84,13 @@ def create_result(request):
     order_id = request.data.get("order_id")
     result_type = request.data.get("result_type")
     metrologist_id = request.data.get("metrologist_id")
+
+    if not Order.objects.filter(id=order_id).exists():
+        return Response({"message": "Заказ не найден"}, status=404)
+    if not metrologist_id or not User.objects.filter(id=metrologist_id).exists():
+        return Response({"message": "Метролог не найден"}, status=404)
+    if result_type not in Result.ResultType.values:
+        return Response({"message": f"Недопустимый тип результата: {result_type}"}, status=400)
 
     now = timezone.now()
 
@@ -84,12 +109,19 @@ def create_result(request):
 @api_view(["GET", "POST"])
 def orders_list(request):
     if request.method == "GET":
+        err = _require_role(request, "manager", "metrolog")
+        if err:
+            return err
         lab_id = request.query_params.get("labId")
         if lab_id:
-            orders = Order.objects.filter(lab_id=lab_id)
+            orders = Order.objects.filter(assigned_lab_id=lab_id)
         else:
             orders = Order.objects.all()
         return Response(OrderSerializer(orders, many=True).data)
+
+    err = _require_role(request, "client", "manager")
+    if err:
+        return err
 
     client_id = request.data.get("client_id")
     service_id = request.data.get("service_id")
@@ -109,13 +141,9 @@ def orders_list(request):
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
 
-    for item in order_items:
-        if not item.get("device_type"):
-            return Response({"message": "Тип прибора обязателен"}, status=400)
-        if not item.get("serial_number"):
-            return Response({"message": "Серийный номер обязателен"}, status=400)
-        if not item.get("quantity") or item.get("quantity") <= 0:
-            return Response({"message": "Количество должно быть больше 0"}, status=400)
+    items_error = _validate_order_items(order_items)
+    if items_error:
+        return items_error
 
     with transaction.atomic():
         order = Order.objects.create(
@@ -141,6 +169,7 @@ def orders_list(request):
 
 
 @api_view(["GET"])
+@permission_classes([has_role("client")])
 def get_my_orders(request):
     client_id = request.query_params.get("clientId")
     if not client_id:
@@ -150,18 +179,21 @@ def get_my_orders(request):
 
 
 @api_view(["GET"])
+@permission_classes([has_role("manager", "metrolog")])
 def get_orders_by_lab_id(request, lab_id):
-    orders = Order.objects.filter(lab_id=lab_id)
+    orders = Order.objects.filter(assigned_lab_id=lab_id)
     return Response(OrderSerializer(orders, many=True).data)
 
 
 @api_view(["GET"])
+@permission_classes([has_role("approver", "director", "financier", "gen_director")])
 def get_orders_by_status(request, status):
     orders = Order.objects.filter(status=status)
     return Response(OrderSerializer(orders, many=True).data)
 
 
 @api_view(["GET"])
+@permission_classes([has_role("client", "manager")])
 def get_order_items(request, id):
     items = OrderItem.objects.filter(order_id=id)
     return Response(OrderItemSerializer(items, many=True).data)
@@ -175,6 +207,10 @@ def order_detail(request, id):
 
     if request.method == "GET":
         return Response(OrderSerializer(order).data)
+
+    err = _require_role(request, "manager")
+    if err:
+        return err
 
     service_id = request.data.get("service_id")
     lab_id = request.data.get("lab_id")
@@ -199,6 +235,7 @@ VALID_STATUSES = Order.Status.values
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("client", "metrolog")])
 def update_order_status(request, id):
     new_status = request.data.get("status")
 
@@ -215,7 +252,6 @@ def update_order_status(request, id):
     client = order.client
     if client and client.email:
         if new_status == "completed":
-            email_utils.send_order_completed(client.email, client.full_name, order.order_number)
             notification_services.notify_client_completed(client.id, order.id, order.order_number)
         else:
             email_utils.send_status_update(client.email, client.full_name, order.order_number, new_status)
@@ -267,6 +303,10 @@ def resubmit_order(request, id):
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
 
+    items_error = _validate_order_items(order_items)
+    if items_error:
+        return items_error
+
     service_id = request.data.get("service_id")
     lab_id = request.data.get("lab_id")
     due_date = request.data.get("due_date")
@@ -282,9 +322,9 @@ def resubmit_order(request, id):
         order.client_comment = client_comment
     order.manager_comment = None
     order.status = "pending_contract"
-    order.save()
 
     with transaction.atomic():
+        order.save()
         OrderItem.objects.filter(order_id=id).delete()
         _create_order_items(order, order_items)
 
@@ -376,6 +416,7 @@ def get_receipt(request, id):
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("financier")])
 def set_price(request, id):
     order, err = _get_order_or_404(id)
     if err:
@@ -389,11 +430,11 @@ def set_price(request, id):
 
     price = request.data.get("price")
     try:
-        price_is_valid = price is not None and float(price) > 0
+        price_is_valid = price is not None and 0 < float(price) <= 99_999_999.99
     except (TypeError, ValueError):
         price_is_valid = False
     if not price_is_valid:
-        return Response({"message": "Цена должна быть больше 0"}, status=400)
+        return Response({"message": "Цена должна быть больше 0 и не превышать 99 999 999.99"}, status=400)
 
     order.price = price
     order.save()
@@ -404,6 +445,7 @@ def set_price(request, id):
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("financier")])
 def confirm_payment(request, id):
     order, err = _get_order_or_404(id)
     if err:
@@ -488,6 +530,10 @@ def contract_detail(request, order_id):
             return err
         return Response(ContractSerializer(contract).data)
 
+    err = _require_role(request, "manager")
+    if err:
+        return err
+
     order, err = _get_order_or_404(order_id, message="Заявка не найдена")
     if err:
         return err
@@ -525,6 +571,7 @@ def contract_detail(request, order_id):
 
 
 @api_view(["GET"])
+@permission_classes([has_role("approver", "financier", "director", "gen_director")])
 def download_contract_file(request, order_id):
     contract, err = _get_contract_or_404(order_id)
     if err:
@@ -542,6 +589,7 @@ def download_contract_file(request, order_id):
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("manager")])
 def resubmit_for_approval(request, order_id):
     contract, err = _get_contract_or_404(order_id)
     if err:
@@ -590,7 +638,7 @@ def _sign_role(request, order_id, role):
 
     setattr(contract, f"{role}_signed", True)
     setattr(contract, f"{role}_signed_at", timezone.now())
-    setattr(contract, f"{role}_signed_by_id", request.data.get("user_id"))
+    setattr(contract, f"{role}_signed_by_id", request.user.id)
     contract.save()
 
     _notify_client_if_trio_signed(contract)
@@ -599,27 +647,32 @@ def _sign_role(request, order_id, role):
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("approver")])
 def sign_by_approver(request, order_id):
     return _sign_role(request, order_id, "approver")
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("financier")])
 def sign_by_financier(request, order_id):
     return _sign_role(request, order_id, "financier")
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("director")])
 def sign_by_director(request, order_id):
     return _sign_role(request, order_id, "director")
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("approver")])
 def approve_contract(request, order_id):
     # Отдельный URL (contracts/<id>/approve/), исторически дублирующий sign/approver/ — оставлен для обратной совместимости фронтенда.
-    return sign_by_approver(request, order_id)
+    return _sign_role(request, order_id, "approver")
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("client")])
 def sign_by_client(request, order_id):
     contract, err = _get_contract_or_404(order_id)
     if err:
@@ -631,7 +684,7 @@ def sign_by_client(request, order_id):
 
     contract.client_signed = True
     contract.client_signed_at = timezone.now()
-    contract.client_signed_by_id = request.data.get("user_id")
+    contract.client_signed_by_id = request.user.id
     contract.save()
 
     order = Order.objects.filter(id=order_id).first()
@@ -642,6 +695,7 @@ def sign_by_client(request, order_id):
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("gen_director")])
 def sign_by_gen_director(request, order_id):
     contract, err = _get_contract_or_404(order_id)
     if err:
@@ -655,7 +709,7 @@ def sign_by_gen_director(request, order_id):
 
     contract.gen_director_signed = True
     contract.gen_director_signed_at = timezone.now()
-    contract.gen_director_signed_by_id = request.data.get("user_id")
+    contract.gen_director_signed_by_id = request.user.id
     contract.status = "signed"
     contract.registration_number = f"РЕГ-{timezone.now().strftime('%Y%m%d')}-{order_id}"
     contract.save()
@@ -670,16 +724,16 @@ def sign_by_gen_director(request, order_id):
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("approver", "director", "financier", "gen_director")])
 def reject_contract(request, order_id):
     contract, err = _get_contract_or_404(order_id)
     if err:
         return err
 
     reason = request.data.get("reason")
-    role = request.data.get("role") or "unknown"
 
     contract.status = "rejected"
-    contract.rejected_by_role = role
+    contract.rejected_by_role = request.user.role
     contract.rejected_reason = reason
     contract.save()
 
@@ -700,7 +754,7 @@ def _close_contract(request, order_id, action):
 
     contract.status = action
     setattr(contract, f"{action}_at", timezone.now())
-    setattr(contract, f"{action}_by_id", request.data.get("user_id"))
+    setattr(contract, f"{action}_by_id", request.user.id)
     setattr(contract, f"{action}_reason", request.data.get("reason"))
     contract.save()
 
@@ -713,16 +767,19 @@ def _close_contract(request, order_id, action):
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("director", "gen_director", "manager")])
 def annul_contract(request, order_id):
     return _close_contract(request, order_id, "annulled")
 
 
 @api_view(["PUT"])
+@permission_classes([has_role("director", "gen_director", "manager")])
 def terminate_contract(request, order_id):
     return _close_contract(request, order_id, "terminated")
 
 
 @api_view(["GET"])
+@permission_classes([has_role("client", "manager", "metrolog")])
 def download_contract(request, order_id):
     try:
         contract = Contract.objects.get(order_id=order_id)
@@ -744,10 +801,11 @@ def download_contract(request, order_id):
 
 
 @api_view(["GET"])
+@permission_classes([has_role("client", "manager", "metrolog")])
 def download_certificate(request, order_id):
     order, err = _get_order_or_404(order_id)
     if err:
-        return Response(status=404)
+        return err
 
     result = Result.objects.filter(order_id=order_id).first()
 
@@ -759,6 +817,7 @@ def download_certificate(request, order_id):
 
 
 @api_view(["GET"])
+@permission_classes([has_role("client", "manager", "financier")])
 def download_invoice(request, order_id):
     order, err = _get_order_or_404(order_id, message="Заявка не найдена")
     if err:
@@ -772,6 +831,7 @@ def download_invoice(request, order_id):
 
 
 @api_view(["GET"])
+@permission_classes([has_role("client", "manager", "metrolog")])
 def get_results_by_order(request, order_id):
     results = Result.objects.filter(order_id=order_id)
     return Response(ResultSerializer(results, many=True).data)

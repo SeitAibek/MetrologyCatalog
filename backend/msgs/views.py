@@ -1,14 +1,15 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from .models import Message
 from .serializers import MessageSerializer
 from orders.models import Order
-from users.models import User
+from users.permissions import has_role
 from notifications import services as notification_services
 
 
 @api_view(["GET", "POST"])
+@permission_classes([has_role("client", "manager", "metrolog")])
 def messages_by_order(request, order_id):
     if request.method == "GET":
         messages = Message.objects.filter(order_id=order_id).order_by("created_at")
@@ -16,7 +17,6 @@ def messages_by_order(request, order_id):
 
     # POST
     text = (request.data.get("text") or "").strip()
-    sender_id = request.data.get("sender_id")
 
     if not text:
         return Response({"message": "Текст сообщения не может быть пустым"}, status=400)
@@ -28,10 +28,7 @@ def messages_by_order(request, order_id):
     except Order.DoesNotExist:
         return Response({"message": "Заявка не найдена"}, status=404)
 
-    try:
-        sender = User.objects.get(id=sender_id)
-    except User.DoesNotExist:
-        return Response({"message": "Отправитель не найден"}, status=404)
+    sender = request.user
 
     message = Message.objects.create(
         order=order,

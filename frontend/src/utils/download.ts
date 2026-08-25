@@ -1,6 +1,8 @@
 // Утилита для скачивания файлов — используется в MyOrders и Queue
 // Избегает дублирования кода в двух компонентах
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081/api';
+
 // Скачивает PDF сертификат/протокол/отчёт для завершённой заявки
 export const downloadCertificate = async (
   orderId: number,
@@ -11,7 +13,7 @@ export const downloadCertificate = async (
   try {
     setDownloadingId?.(orderId);
     const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:8081/api/pdf/certificate/${orderId}`, {
+    const response = await fetch(`${API_URL}/pdf/certificate/${orderId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -33,18 +35,16 @@ export const downloadCertificate = async (
   }
 };
 
-// Скачивает PDF договора для заявки
-// Если договор ещё не создан — создаёт его автоматически
+// Скачивает PDF договора для заявки.
+// Бэкенд сам генерирует PDF по шаблону, если файл договора ещё не загружен менеджером.
 export const downloadContract = async (
   orderId: number,
   orderNumber: string,
-  api: any,
   setError: (msg: string) => void
 ) => {
   try {
-    await api.post(`/contracts/${orderId}`);
     const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:8081/api/contracts/${orderId}/download`, {
+    const response = await fetch(`${API_URL}/contracts/${orderId}/download`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }

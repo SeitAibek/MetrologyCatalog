@@ -96,15 +96,15 @@ def register(request):
             return Response({"message": "Email уже зарегистрирован"}, status=409)
 
     with transaction.atomic():
-        company = Company.objects.filter(bin=bin_number).first()
-        if not company:
-            company = Company.objects.create(
-                bin=bin_number,
-                name=company_name,
-                address=company_address,
-                phone=phone,
-                email=email or None,
-            )
+        company, _ = Company.objects.get_or_create(
+            bin=bin_number,
+            defaults={
+                "name": company_name,
+                "address": company_address,
+                "phone": phone,
+                "email": email or None,
+            },
+        )
 
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
@@ -262,20 +262,28 @@ def get_all_users(request):
 
 
 @api_view(["GET"])
+@permission_classes([has_role("manager")])
 def get_clients(request):
     clients = User.objects.filter(role="client")
     return Response(UserSerializer(clients, many=True).data)
 
 
+VALID_ROLES = [choice[0] for choice in User.ROLE_CHOICES]
+
+
 @api_view(["PUT"])
 @permission_classes([has_role("admin")])
 def update_role(request, id):
+    role = request.data.get("role")
+    if role not in VALID_ROLES:
+        return Response({"message": f"Недопустимая роль: {role}"}, status=400)
+
     try:
         user = User.objects.get(id=id)
     except User.DoesNotExist:
         return Response({"message": "Пользователь не найден"}, status=404)
 
-    user.role = request.data.get("role")
+    user.role = role
     user.save()
 
     return Response(UserSerializer(user).data)
@@ -284,12 +292,16 @@ def update_role(request, id):
 @api_view(["PUT"])
 @permission_classes([has_role("admin")])
 def update_active(request, id):
+    active = request.data.get("active")
+    if not isinstance(active, bool):
+        return Response({"message": "Поле 'active' должно быть true или false"}, status=400)
+
     try:
         user = User.objects.get(id=id)
     except User.DoesNotExist:
         return Response({"message": "Пользователь не найден"}, status=404)
 
-    user.is_active = request.data.get("active")
+    user.is_active = active
     user.save()
 
     return Response(UserSerializer(user).data)

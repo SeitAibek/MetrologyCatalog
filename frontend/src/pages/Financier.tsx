@@ -112,12 +112,16 @@ export default function Financier() {
   };
 
   const handlePayment = async (orderId: number, paid: boolean) => {
-    const label = paid ? 'подтвердить оплату' : 'пропустить оплату';
-    if (!window.confirm(`${label.charAt(0).toUpperCase() + label.slice(1)}?`)) return;
+    if (!paid) {
+      // "Пропустить" — не двигает заявку дальше, просто убирает её из текущего списка
+      setPaymentOrders(prev => prev.filter(o => o.id !== orderId));
+      return;
+    }
+    if (!window.confirm('Подтвердить оплату?')) return;
     try {
       setProcessing(orderId);
       const price = prices[orderId] ? parseFloat(prices[orderId]) : null;
-      await orderApi.confirmPayment(orderId, paid, comments[orderId], price);
+      await orderApi.confirmPayment(orderId, true, comments[orderId], price);
       setPaymentOrders(prev => prev.filter(o => o.id !== orderId));
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка при обработке оплаты');
@@ -168,15 +172,25 @@ export default function Financier() {
     }
   };
 
+  const getMimeType = (f?: string) => {
+    switch (f?.split('.').pop()?.toLowerCase()) {
+      case 'pdf': return 'application/pdf';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'webp': return 'image/webp';
+      default: return 'application/octet-stream';
+    }
+  };
+
   const handleDownloadReceipt = () => {
     if (!receiptModal) return;
     const { fileData, fileName } = receiptModal;
-    const isPdf = fileName.toLowerCase().endsWith('.pdf');
     const byteString = atob(fileData);
     const ab = new ArrayBuffer(byteString.length);
     const ia = new Uint8Array(ab);
     for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-    downloadBlob(new Blob([ab], { type: isPdf ? 'application/pdf' : 'image/jpeg' }), fileName);
+    downloadBlob(new Blob([ab], { type: getMimeType(fileName) }), fileName);
   };
 
   const formatDate = (d?: string) => d ? new Date(d).toLocaleString('ru-RU') : '—';
@@ -508,7 +522,7 @@ export default function Financier() {
             </div>
             <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-gray-50">
               {isImage(receiptModal.fileName) ? (
-                <img src={`data:image/jpeg;base64,${receiptModal.fileData}`} alt="Чек"
+                <img src={`data:${getMimeType(receiptModal.fileName)};base64,${receiptModal.fileData}`} alt="Чек"
                   className="max-w-full max-h-[60vh] rounded-xl shadow-md object-contain" />
               ) : (
                 <div className="text-center py-12">

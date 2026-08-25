@@ -224,7 +224,7 @@ export default function Queue() {
                         </button>
                       )}
 
-                      <button onClick={() => downloadContract(order.id, order.orderNumber, api, setError)}
+                      <button onClick={() => downloadContract(order.id, order.orderNumber, setError)}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg border-none cursor-pointer text-sm transition-colors flex items-center gap-1.5"
                         style={{ marginBottom: 0 }}>
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">

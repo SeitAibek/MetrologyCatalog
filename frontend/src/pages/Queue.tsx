@@ -16,6 +16,12 @@ export default function Queue() {
   const [resultType, setResultType] = useState('certificate');
   const [submitting, setSubmitting] = useState(false);
 
+  const [showExpertiseModal, setShowExpertiseModal] = useState(false);
+  const [testProgramDraft, setTestProgramDraft] = useState<{ data: string; name: string } | null>(null);
+  const [typeDescriptionDraft, setTypeDescriptionDraft] = useState<{ data: string; name: string } | null>(null);
+  const [expertiseConclusion, setExpertiseConclusion] = useState('');
+  const [submittingExpertise, setSubmittingExpertise] = useState(false);
+
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
   const [chatOpen, setChatOpen] = useState<number | null>(null);
   const [messageText, setMessageText] = useState('');
@@ -29,6 +35,7 @@ export default function Queue() {
     pending_delivery:  'Оплата получена',
     awaiting_delivery: 'Ожидает направления',
     received_in_lab:   'Принято в лаб',
+    expertise:         'Экспертиза документации',
     in_work:           'В работе',
     under_review:      'На проверке',
     completed:         'Завершено',
@@ -38,7 +45,8 @@ export default function Queue() {
   };
 
   const statusFlow: Record<string, string> = {
-    received_in_lab: 'in_work',
+    received_in_lab: 'expertise',
+    expertise:       'in_work',
     in_work:         'under_review',
     under_review:    'completed',
   };
@@ -51,6 +59,7 @@ export default function Queue() {
     pending_delivery:  { bg: 'bg-lime-100',   text: 'text-lime-700' },
     awaiting_delivery: { bg: 'bg-amber-100',  text: 'text-amber-700' },
     received_in_lab:   { bg: 'bg-purple-100', text: 'text-purple-700' },
+    expertise:         { bg: 'bg-indigo-100', text: 'text-indigo-700' },
     in_work:           { bg: 'bg-pink-100',   text: 'text-pink-700' },
     under_review:      { bg: 'bg-orange-100', text: 'text-orange-700' },
     completed:         { bg: 'bg-green-100',  text: 'text-green-700' },
@@ -64,8 +73,9 @@ export default function Queue() {
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
-      const labId = user?.role === 'metrolog' ? user?.labId : undefined;
-      const response = await orderApi.getAll(labId ?? undefined);
+      // Для metrolog бэкенд сам фильтрует по личному назначению (Order.metrologist);
+      // labId здесь больше не нужен.
+      const response = await orderApi.getAll();
       setOrders(response.data);
     } catch {
       setError('Ошибка при загрузке заявок');
@@ -104,6 +114,12 @@ export default function Queue() {
     const nextStatus = statusFlow[currentStatus];
     if (!nextStatus) return;
 
+    if (currentStatus === 'expertise') {
+      setSelectedOrderId(orderId);
+      setShowExpertiseModal(true);
+      return;
+    }
+
     if (nextStatus === 'completed') {
       setSelectedOrderId(orderId);
       setShowModal(true);
@@ -115,6 +131,60 @@ export default function Queue() {
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: nextStatus as Order['status'] } : o));
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка при изменении статуса');
+    }
+  };
+
+  const readFileAsBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleDraftFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setDraft: (draft: { data: string; name: string }) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Файл слишком большой. Максимум 10MB');
+      return;
+    }
+    const data = await readFileAsBase64(file);
+    setDraft({ data, name: file.name });
+  };
+
+  const resetExpertiseModal = () => {
+    setShowExpertiseModal(false);
+    setSelectedOrderId(null);
+    setTestProgramDraft(null);
+    setTypeDescriptionDraft(null);
+    setExpertiseConclusion('');
+  };
+
+  const handleSubmitExpertise = async () => {
+    if (!selectedOrderId) return;
+    if (!testProgramDraft) { setError('Прикрепите проект программы испытаний'); return; }
+    if (!typeDescriptionDraft) { setError('Прикрепите проект описания типа'); return; }
+    if (!expertiseConclusion.trim()) { setError('Укажите экспертное заключение'); return; }
+
+    try {
+      setSubmittingExpertise(true);
+      await orderApi.submitExpertise(selectedOrderId, {
+        testProgramDraftFile: testProgramDraft.data,
+        testProgramDraftFileName: testProgramDraft.name,
+        typeDescriptionDraftFile: typeDescriptionDraft.data,
+        typeDescriptionDraftFileName: typeDescriptionDraft.name,
+        expertiseConclusion: expertiseConclusion.trim(),
+      });
+      setOrders(prev => prev.map(o => o.id === selectedOrderId ? { ...o, status: 'in_work' as Order['status'] } : o));
+      resetExpertiseModal();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Ошибка при отправке экспертизы');
+    } finally {
+      setSubmittingExpertise(false);
     }
   };
 
@@ -336,6 +406,61 @@ export default function Queue() {
                 {submitting ? 'Сохранение...' : 'Завершить'}
               </button>
               <button onClick={() => { setShowModal(false); setSelectedOrderId(null); }}
+                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl border-none cursor-pointer text-sm transition-colors"
+                style={{ marginBottom: 0 }}>
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExpertiseModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg">
+            <h2 className="font-bold text-[#0A2E5C] mb-6" style={{ margin: '0 0 24px', fontSize: '1.25rem' }}>
+              Завершить экспертизу
+            </h2>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Проект программы испытаний *</label>
+              <input type="file" accept=".pdf,.doc,.docx"
+                onChange={e => handleDraftFileChange(e, setTestProgramDraft)}
+                className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
+              {testProgramDraft && (
+                <p className="text-xs text-green-600 mt-1" style={{ margin: '4px 0 0' }}>{testProgramDraft.name}</p>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Проект описания типа *</label>
+              <input type="file" accept=".pdf,.doc,.docx"
+                onChange={e => handleDraftFileChange(e, setTypeDescriptionDraft)}
+                className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
+              {typeDescriptionDraft && (
+                <p className="text-xs text-green-600 mt-1" style={{ margin: '4px 0 0' }}>{typeDescriptionDraft.name}</p>
+              )}
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Экспертное заключение *</label>
+              <textarea value={expertiseConclusion} onChange={e => setExpertiseConclusion(e.target.value)}
+                placeholder="Результаты экспертизы технической документации..."
+                rows={4}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all resize-none"
+                style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={handleSubmitExpertise} disabled={submittingExpertise}
+                className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-semibold rounded-xl border-none cursor-pointer text-sm transition-colors flex items-center justify-center gap-2"
+                style={{ marginBottom: 0 }}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path d="m9 11 3 3L22 4"/>
+                </svg>
+                {submittingExpertise ? 'Сохранение...' : 'Завершить экспертизу'}
+              </button>
+              <button onClick={resetExpertiseModal}
                 className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl border-none cursor-pointer text-sm transition-colors"
                 style={{ marginBottom: 0 }}>
                 Отмена

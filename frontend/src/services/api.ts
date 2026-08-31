@@ -66,12 +66,19 @@ export const orderApi = {
     api.put(`/orders/${id}/upload-receipt`, { fileData, fileName }),
   getReceipt: (id: number) =>
     api.get(`/orders/${id}/receipt`),
-  assignLab: (id: number, labId: number) =>
-    api.put(`/orders/${id}/assign-lab`, { labId }),
+  assignLab: (id: number, labId: number, metrologistId: number) =>
+    api.put(`/orders/${id}/assign-lab`, { labId, metrologistId }),
   notifyDirector: (id: number) =>
     api.put(`/orders/${id}/notify-director`),
   setPrice: (id: number, price: number) =>
     api.put(`/orders/${id}/set-price`, { price }),
+  submitExpertise: (id: number, data: {
+    testProgramDraftFile: string;
+    testProgramDraftFileName: string;
+    typeDescriptionDraftFile: string;
+    typeDescriptionDraftFileName: string;
+    expertiseConclusion: string;
+  }) => api.put(`/orders/${id}/submit-expertise`, data),
 };
 
 export const pdfApi = {
@@ -128,6 +135,7 @@ export const userApi = {
   getProfile: (userId: number) => api.get('/profile', { params: { userId } }),
   updateProfile: (data: any) => api.put('/profile', data),
   getClients: () => api.get('/users/clients'),
+  getMetrologistsByLab: (labId: number) => api.get(`/users/metrologists/${labId}`),
 };
 
 export const messageApi = {

@@ -268,6 +268,13 @@ def get_clients(request):
     return Response(UserSerializer(clients, many=True).data)
 
 
+@api_view(["GET"])
+@permission_classes([has_role("director")])
+def get_metrologists_by_lab(request, lab_id):
+    metrologists = User.objects.filter(role="metrolog", lab_id=lab_id, is_active=True)
+    return Response(UserSerializer(metrologists, many=True).data)
+
+
 VALID_ROLES = [choice[0] for choice in User.ROLE_CHOICES]
 
 

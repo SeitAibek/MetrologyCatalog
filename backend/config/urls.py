@@ -29,6 +29,7 @@ urlpatterns = [
         path("<int:id>/role/", user_views.update_role, name="user-update-role"),
         path("<int:id>/active/", user_views.update_active, name="user-update-active"),
         path("clients/", user_views.get_clients, name="users-clients"),
+        path("metrologists/<int:lab_id>/", user_views.get_metrologists_by_lab, name="users-metrologists-by-lab"),
     ])),
     path("api/services/", include("catalog.urls")),
     path("api/laboratories/", include("laboratories.urls")),

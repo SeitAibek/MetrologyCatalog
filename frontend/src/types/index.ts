@@ -50,6 +50,7 @@ export type OrderStatus =
   | 'pending_delivery'
   | 'awaiting_delivery'
   | 'received_in_lab'
+  | 'expertise'
   | 'in_work'
   | 'under_review'
   | 'completed'
@@ -75,6 +76,11 @@ export interface Order {
   invoiceSent?: boolean;
   paymentReceiptName?: string;
   receiptUploadedAt?: string;
+  powerOfAttorneyFileName?: string;
+  techDocumentationFileName?: string;
+  testProgramDraftFileName?: string;
+  typeDescriptionDraftFileName?: string;
+  expertiseConclusion?: string;
 }
 
 export interface OrderItem {
@@ -84,6 +90,10 @@ export interface OrderItem {
   model: string;
   serialNumber: string;
   quantity: number;
+  manufacturerName?: string;
+  manufacturerAddress?: string;
+  manufacturerCountry?: string;
+  metrologicalCharacteristics?: string;
 }
 
 export type ContractStatus =

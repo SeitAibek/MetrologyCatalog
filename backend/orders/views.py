@@ -38,6 +38,10 @@ def _create_order_items(order, items):
             model=item.get("model"),
             serial_number=item.get("serial_number"),
             quantity=item.get("quantity"),
+            manufacturer_name=item.get("manufacturer_name"),
+            manufacturer_address=item.get("manufacturer_address"),
+            manufacturer_country=item.get("manufacturer_country"),
+            metrological_characteristics=item.get("metrological_characteristics"),
         )
 
 
@@ -112,11 +116,16 @@ def orders_list(request):
         err = _require_role(request, "manager", "metrolog")
         if err:
             return err
-        lab_id = request.query_params.get("labId")
-        if lab_id:
-            orders = Order.objects.filter(assigned_lab_id=lab_id)
+        if request.user.role == "metrolog":
+            # Личное назначение — метролог видит только заявки, назначенные лично ему,
+            # а не всю лабораторию (см. assign_to_lab).
+            orders = Order.objects.filter(metrologist_id=request.user.id)
         else:
-            orders = Order.objects.all()
+            lab_id = request.query_params.get("labId")
+            if lab_id:
+                orders = Order.objects.filter(assigned_lab_id=lab_id)
+            else:
+                orders = Order.objects.all()
         return Response(OrderSerializer(orders, many=True).data)
 
     err = _require_role(request, "client", "manager")
@@ -129,6 +138,10 @@ def orders_list(request):
     due_date = request.data.get("due_date")
     order_items = request.data.get("order_items")
     client_comment = request.data.get("client_comment")
+    power_of_attorney_file = request.data.get("power_of_attorney_file")
+    power_of_attorney_file_name = request.data.get("power_of_attorney_file_name")
+    tech_documentation_file = request.data.get("tech_documentation_file")
+    tech_documentation_file_name = request.data.get("tech_documentation_file_name")
 
     if not client_id:
         return Response({"message": "ID клиента обязателен"}, status=400)
@@ -154,6 +167,10 @@ def orders_list(request):
             status="pending_contract",
             due_date=due_date,
             client_comment=client_comment,
+            power_of_attorney_file=power_of_attorney_file,
+            power_of_attorney_file_name=power_of_attorney_file_name,
+            tech_documentation_file=tech_documentation_file,
+            tech_documentation_file_name=tech_documentation_file_name,
         )
 
         _create_order_items(order, order_items)
@@ -245,6 +262,9 @@ def update_order_status(request, id):
     order, err = _get_order_or_404(id)
     if err:
         return err
+
+    if request.user.role == "metrolog" and order.metrologist_id != request.user.id:
+        return Response({"message": "Заявка не назначена вам"}, status=403)
 
     order.status = new_status
     order.save()
@@ -490,7 +510,7 @@ def notify_director(request, id):
 
 
 @api_view(["PUT"])
-@permission_classes([has_role("director", "gen_director")])
+@permission_classes([has_role("director")])
 def assign_to_lab(request, id):
     order, err = _get_order_or_404(id)
     if err:
@@ -503,21 +523,73 @@ def assign_to_lab(request, id):
         )
 
     lab_id = request.data.get("lab_id")
+    metrologist_id = request.data.get("metrologist_id")
     if not lab_id:
         return Response({"message": "ID лаборатории обязателен"}, status=400)
+    if not metrologist_id:
+        return Response({"message": "ID ответственного метролога обязателен"}, status=400)
 
     try:
         lab = Laboratory.objects.get(id=lab_id)
     except Laboratory.DoesNotExist:
         return Response({"message": "Лаборатория не найдена"}, status=404)
 
+    try:
+        metrologist = User.objects.get(id=metrologist_id, role="metrolog", is_active=True)
+    except User.DoesNotExist:
+        return Response({"message": "Метролог не найден или неактивен"}, status=404)
+    if str(metrologist.lab_id) != str(lab_id):
+        return Response({"message": "Метролог не принадлежит выбранной лаборатории"}, status=400)
+
     order.assigned_lab_id = lab_id
     order.assigned_at = timezone.now()
+    order.metrologist_id = metrologist_id
     order.status = "received_in_lab"
     order.save()
 
     lab_name = lab.name + (f" ({lab.city})" if lab.city else "")
     notification_services.notify_assigned_to_lab(order.client_id, order.id, order.order_number, lab_name)
+
+    return Response(OrderSerializer(order).data)
+
+
+@api_view(["PUT"])
+@permission_classes([has_role("metrolog")])
+def submit_expertise(request, id):
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
+
+    if order.metrologist_id != request.user.id:
+        return Response({"message": "Заявка не назначена вам"}, status=403)
+    if order.status != "expertise":
+        return Response(
+            {"message": "Экспертизу можно завершить только для заявки в статусе 'expertise'"},
+            status=400,
+        )
+
+    test_program_file = request.data.get("test_program_draft_file")
+    test_program_file_name = request.data.get("test_program_draft_file_name")
+    type_description_file = request.data.get("type_description_draft_file")
+    type_description_file_name = request.data.get("type_description_draft_file_name")
+    conclusion = (request.data.get("expertise_conclusion") or "").strip()
+
+    if not test_program_file or not test_program_file_name:
+        return Response({"message": "Проект программы испытаний обязателен"}, status=400)
+    if not type_description_file or not type_description_file_name:
+        return Response({"message": "Проект описания типа обязателен"}, status=400)
+    if not conclusion:
+        return Response({"message": "Экспертное заключение обязательно"}, status=400)
+    if len(test_program_file) > 10_000_000 or len(type_description_file) > 10_000_000:
+        return Response({"message": "Файл слишком большой. Максимум 10MB"}, status=400)
+
+    order.test_program_draft_file = test_program_file
+    order.test_program_draft_file_name = test_program_file_name
+    order.type_description_draft_file = type_description_file
+    order.type_description_draft_file_name = type_description_file_name
+    order.expertise_conclusion = conclusion
+    order.status = "in_work"
+    order.save()
 
     return Response(OrderSerializer(order).data)
 

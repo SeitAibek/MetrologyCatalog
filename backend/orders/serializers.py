@@ -5,7 +5,11 @@ from .models import Order, OrderItem, Contract, Result
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
-        fields = ["id", "order_id", "device_type", "model", "serial_number", "quantity"]
+        fields = [
+            "id", "order_id", "device_type", "model", "serial_number", "quantity",
+            "manufacturer_name", "manufacturer_address", "manufacturer_country",
+            "metrological_characteristics",
+        ]
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -16,6 +20,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "assigned_at", "status", "price", "due_date", "metrologist_id",
             "payment_comment", "client_comment", "manager_comment",
             "invoice_sent", "payment_receipt_name", "receipt_uploaded_at",
+            "power_of_attorney_file_name", "tech_documentation_file_name",
+            "test_program_draft_file_name", "type_description_draft_file_name",
+            "expertise_conclusion",
         ]
 
 

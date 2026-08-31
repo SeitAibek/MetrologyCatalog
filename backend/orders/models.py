@@ -11,6 +11,7 @@ class Order(models.Model):
         PENDING_DELIVERY = "pending_delivery", "Pending Delivery"
         AWAITING_DELIVERY = "awaiting_delivery", "Awaiting Delivery"
         RECEIVED_IN_LAB = "received_in_lab", "Received In Lab"
+        EXPERTISE = "expertise", "Expertise"
         IN_WORK = "in_work", "In Work"
         UNDER_REVIEW = "under_review", "Under Review"
         COMPLETED = "completed", "Completed"
@@ -42,6 +43,20 @@ class Order(models.Model):
     payment_receipt_name = models.CharField(max_length=255, null=True, blank=True)
     receipt_uploaded_at = models.DateTimeField(null=True, blank=True)
 
+    # Заявитель прикладывает на шаге подачи заявки (форма Казстандарта); nullable —
+    # чтобы заявки, созданные до появления этих полей, не требовали бэкфилла.
+    power_of_attorney_file = models.TextField(null=True, blank=True)
+    power_of_attorney_file_name = models.CharField(max_length=255, null=True, blank=True)
+    tech_documentation_file = models.TextField(null=True, blank=True)
+    tech_documentation_file_name = models.CharField(max_length=255, null=True, blank=True)
+
+    # Заполняется назначенным метрологом на этапе экспертизы (expertise -> in_work).
+    test_program_draft_file = models.TextField(null=True, blank=True)
+    test_program_draft_file_name = models.CharField(max_length=255, null=True, blank=True)
+    type_description_draft_file = models.TextField(null=True, blank=True)
+    type_description_draft_file_name = models.CharField(max_length=255, null=True, blank=True)
+    expertise_conclusion = models.TextField(null=True, blank=True)
+
     class Meta:
         db_table = "orders"
 
@@ -54,6 +69,13 @@ class OrderItem(models.Model):
     model = models.CharField(max_length=255, null=True, blank=True)
     serial_number = models.CharField(max_length=255)
     quantity = models.IntegerField()
+
+    # Данные производителя СИ и метрологические характеристики — поля формы
+    # Казстандарта; nullable, т.к. существующие заявки создавались без них.
+    manufacturer_name = models.CharField(max_length=255, null=True, blank=True)
+    manufacturer_address = models.CharField(max_length=255, null=True, blank=True)
+    manufacturer_country = models.CharField(max_length=255, null=True, blank=True)
+    metrological_characteristics = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = "order_items"

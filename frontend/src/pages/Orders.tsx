@@ -66,6 +66,7 @@ export default function Orders() {
     pending_delivery:  'Оплата получена',
     awaiting_delivery: 'Ожидает доставки',
     received_in_lab:   'Принято в лаб',
+    expertise:         'Экспертиза документации',
     in_work:           'В работе',
     under_review:      'На проверке',
     completed:         'Завершено',
@@ -83,6 +84,7 @@ export default function Orders() {
     pending_delivery:  { bg: 'bg-lime-100',   text: 'text-lime-700' },
     awaiting_delivery: { bg: 'bg-amber-100',  text: 'text-amber-700' },
     received_in_lab:   { bg: 'bg-purple-100', text: 'text-purple-700' },
+    expertise:         { bg: 'bg-violet-100', text: 'text-violet-700' },
     in_work:           { bg: 'bg-pink-100',   text: 'text-pink-700' },
     under_review:      { bg: 'bg-orange-100', text: 'text-orange-700' },
     completed:         { bg: 'bg-green-100',  text: 'text-green-700' },
@@ -541,7 +543,7 @@ export default function Orders() {
                   <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                     <div className="flex items-center gap-3">
                       <h3 className="font-bold text-[#0A2E5C]" style={{ margin: 0, fontSize: '1rem' }}>
-                        Заявка #{order.orderNumber}
+                        {user?.role === 'client' ? `Исх. № ${order.orderNumber}` : `Заявка #${order.orderNumber}`}
                       </h3>
                       <span className={`text-xs font-semibold px-3 py-1 rounded-full ${sc.bg} ${sc.text}`}>
                         {statusLabels[order.status] || order.status}

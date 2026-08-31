@@ -23,9 +23,16 @@ export default function CreateOrder() {
     model: '',
     serialNumber: '',
     quantity: '1',
+    manufacturerName: '',
+    manufacturerAddress: '',
+    manufacturerCountry: '',
+    metrologicalCharacteristics: '',
     dueDate: '',
     clientComment: '',
   });
+
+  const [powerOfAttorney, setPowerOfAttorney] = useState<{ data: string; name: string } | null>(null);
+  const [techDocumentation, setTechDocumentation] = useState<{ data: string; name: string } | null>(null);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -53,6 +60,28 @@ export default function CreateOrder() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const readFileAsBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleAttachmentChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setAttachment: (attachment: { data: string; name: string }) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Файл слишком большой. Максимум 10MB');
+      return;
+    }
+    const data = await readFileAsBase64(file);
+    setAttachment({ data, name: file.name });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -63,8 +92,18 @@ export default function CreateOrder() {
       return;
     }
 
-    if (!formData.serviceId || !formData.labId || !formData.deviceType || !formData.serialNumber || !formData.dueDate) {
+    if (!formData.serviceId || !formData.labId || !formData.deviceType || !formData.serialNumber || !formData.dueDate
+      || !formData.manufacturerName || !formData.manufacturerAddress || !formData.manufacturerCountry
+      || !formData.metrologicalCharacteristics) {
       setError('Заполните все обязательные поля');
+      return;
+    }
+    if (!powerOfAttorney) {
+      setError('Прикрепите доверенность');
+      return;
+    }
+    if (!techDocumentation) {
+      setError('Прикрепите документацию на СИ');
       return;
     }
 
@@ -75,11 +114,19 @@ export default function CreateOrder() {
         labId: parseInt(formData.labId),
         dueDate: formData.dueDate,
         clientComment: formData.clientComment || null,
+        powerOfAttorneyFile: powerOfAttorney.data,
+        powerOfAttorneyFileName: powerOfAttorney.name,
+        techDocumentationFile: techDocumentation.data,
+        techDocumentationFileName: techDocumentation.name,
         orderItems: [{
           deviceType: formData.deviceType,
           model: formData.model,
           serialNumber: formData.serialNumber,
           quantity: parseInt(formData.quantity),
+          manufacturerName: formData.manufacturerName,
+          manufacturerAddress: formData.manufacturerAddress,
+          manufacturerCountry: formData.manufacturerCountry,
+          metrologicalCharacteristics: formData.metrologicalCharacteristics,
         }],
       };
 
@@ -219,6 +266,58 @@ export default function CreateOrder() {
                 <input type="number" name="quantity" value={formData.quantity} onChange={handleChange}
                   min="1" required className={inputClass}
                   style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Полное наименование производства *</label>
+                <input type="text" name="manufacturerName" value={formData.manufacturerName} onChange={handleChange}
+                  placeholder="Наименование завода-изготовителя" required className={inputClass}
+                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес производства *</label>
+                <input type="text" name="manufacturerAddress" value={formData.manufacturerAddress} onChange={handleChange}
+                  placeholder="Адрес завода-изготовителя" required className={inputClass}
+                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Страна производства *</label>
+                <input type="text" name="manufacturerCountry" value={formData.manufacturerCountry} onChange={handleChange}
+                  placeholder="Страна изготовления" required className={inputClass}
+                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Метрологические характеристики *</label>
+                <textarea name="metrologicalCharacteristics" value={formData.metrologicalCharacteristics} onChange={handleChange}
+                  placeholder="Диапазон измерений, погрешность, класс точности и т.д."
+                  required rows={3}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all bg-white resize-none"
+                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+            <p className="text-xs font-semibold text-[#00B2FF] uppercase tracking-wider mb-4" style={{ margin: '0 0 16px' }}>
+              Вложения
+            </p>
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Доверенность *</label>
+                <input type="file" accept=".pdf,.jpg,.jpeg,.rar"
+                  onChange={e => handleAttachmentChange(e, setPowerOfAttorney)}
+                  className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
+                {powerOfAttorney && (
+                  <p className="text-xs text-green-600 mt-1" style={{ margin: '4px 0 0' }}>{powerOfAttorney.name}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Документация на СИ *</label>
+                <input type="file" accept=".pdf,.jpg,.jpeg,.rar"
+                  onChange={e => handleAttachmentChange(e, setTechDocumentation)}
+                  className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
+                {techDocumentation && (
+                  <p className="text-xs text-green-600 mt-1" style={{ margin: '4px 0 0' }}>{techDocumentation.name}</p>
+                )}
               </div>
             </div>
           </div>

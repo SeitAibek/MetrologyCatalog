@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { orderApi, contractApi, laboratoryApi } from '../services/api';
-import type { Order, Contract, Laboratory } from '../types';
+import { orderApi, contractApi, laboratoryApi, userApi } from '../services/api';
+import type { Order, Contract, Laboratory, User } from '../types';
 
 export default function Director() {
   const { user } = useAuthStore();
@@ -20,6 +20,9 @@ export default function Director() {
   const [rejectReason, setRejectReason] = useState<Record<number, string>>({});
   const [downloadingContract, setDownloadingContract] = useState<number | null>(null);
   const [selectedLabs, setSelectedLabs] = useState<Record<number, string>>({});
+  const [selectedMetrologists, setSelectedMetrologists] = useState<Record<number, string>>({});
+  const [metrologistsByOrder, setMetrologistsByOrder] = useState<Record<number, User[]>>({});
+  const [loadingMetrologists, setLoadingMetrologists] = useState<Record<number, boolean>>({});
   const [assigning, setAssigning] = useState<number | null>(null);
 
   useEffect(() => { fetchAll(); }, []);
@@ -99,13 +102,33 @@ export default function Director() {
     }
   };
 
+  const handleLabChange = async (orderId: number, labId: string) => {
+    setSelectedLabs(prev => ({ ...prev, [orderId]: labId }));
+    setSelectedMetrologists(prev => ({ ...prev, [orderId]: '' }));
+    if (!labId) {
+      setMetrologistsByOrder(prev => ({ ...prev, [orderId]: [] }));
+      return;
+    }
+    try {
+      setLoadingMetrologists(prev => ({ ...prev, [orderId]: true }));
+      const res = await userApi.getMetrologistsByLab(parseInt(labId));
+      setMetrologistsByOrder(prev => ({ ...prev, [orderId]: res.data }));
+    } catch {
+      setError('Ошибка при загрузке метрологов лаборатории');
+    } finally {
+      setLoadingMetrologists(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
+
   const handleAssign = async (orderId: number) => {
     const labId = parseInt(selectedLabs[orderId] || '');
+    const metrologistId = parseInt(selectedMetrologists[orderId] || '');
     if (!labId) { setError('Выберите лабораторию'); return; }
+    if (!metrologistId) { setError('Выберите ответственного метролога'); return; }
     if (!window.confirm('Направить заявку в выбранную лабораторию?')) return;
     try {
       setAssigning(orderId);
-      await orderApi.assignLab(orderId, labId);
+      await orderApi.assignLab(orderId, labId, metrologistId);
       setAssignOrders(prev => prev.filter(o => o.id !== orderId));
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка при направлении');
@@ -327,18 +350,30 @@ export default function Director() {
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
                     <select value={selectedLabs[order.id] || ''}
-                      onChange={e => setSelectedLabs(prev => ({ ...prev, [order.id]: e.target.value }))}
+                      onChange={e => handleLabChange(order.id, e.target.value)}
                       className="flex-1 min-w-[200px] px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 cursor-pointer"
                       style={{ fontFamily: 'inherit', marginBottom: 0 }}>
-                      <option value="">— Выберите филиал / лабораторию —</option>
+                      <option value="">— Выберите филиал / лабораторию (СП) —</option>
                       {laboratories.map(lab => (
                         <option key={lab.id} value={lab.id}>
                           {lab.name}{lab.city ? ` (${lab.city})` : ''}
                         </option>
                       ))}
                     </select>
+                    <select value={selectedMetrologists[order.id] || ''}
+                      onChange={e => setSelectedMetrologists(prev => ({ ...prev, [order.id]: e.target.value }))}
+                      disabled={!selectedLabs[order.id] || !!loadingMetrologists[order.id]}
+                      className="flex-1 min-w-[200px] px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 cursor-pointer disabled:bg-gray-50 disabled:cursor-not-allowed"
+                      style={{ fontFamily: 'inherit', marginBottom: 0 }}>
+                      <option value="">
+                        {loadingMetrologists[order.id] ? 'Загрузка метрологов...' : '— Выберите ответственного метролога (ИСП) —'}
+                      </option>
+                      {(metrologistsByOrder[order.id] || []).map(m => (
+                        <option key={m.id} value={m.id}>{m.fullName}</option>
+                      ))}
+                    </select>
                     <button onClick={() => handleAssign(order.id)}
-                      disabled={!selectedLabs[order.id] || assigning === order.id}
+                      disabled={!selectedLabs[order.id] || !selectedMetrologists[order.id] || assigning === order.id}
                       className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:cursor-not-allowed text-white font-medium rounded-xl border-none cursor-pointer text-sm transition-colors flex items-center gap-2"
                       style={{ marginBottom: 0 }}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">

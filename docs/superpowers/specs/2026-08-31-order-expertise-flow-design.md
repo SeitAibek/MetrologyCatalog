@@ -126,6 +126,24 @@
   `order.metrologist_id` и `order.status = "received_in_lab"` сохраняются
   одним `save()`, как и сегодня.
 
+Поскольку `metrologist_id` становится обязательным параметром
+`assign_to_lab`, право вызывать этот эндпоинт сужается до **только
+`director`** — `gen_director` убирается из `permission_classes`.
+
+Причина: `GenDirector.tsx` сегодня тоже вызывает `PUT
+/orders/<id>/assign-lab/`, но передаёт только `labId` (см. `handleAssign`,
+`GenDirector.tsx:117-130`, и кнопку `GenDirector.tsx:356-364`). Раз
+`gen_director` в этом процессе не участвует (его роль — только
+существующая подпись в контрактной цепочке), правильный выбор — не
+чинить `GenDirector.tsx` под новый обязательный параметр, а убрать у него
+это действие вовсе: после сужения роли `assign_to_lab` до `director`
+кнопка в `GenDirector.tsx` начала бы просто получать 403, то есть вкладка
+"Направить на исполнение" стала бы мёртвым UI. Поэтому вкладка "assign"
+целиком удаляется из `GenDirector.tsx` — остаётся только "Финальное
+подписание" (`activeTab`, `assignOrders`, `laboratories`, `selectedLabs`,
+`assigning`, `handleAssign` и связанная разметка убираются; `fetchAll`
+перестаёт грузить `awaiting_delivery` и лаборатории).
+
 Для UI выбора метролога — новая вьюха:
 
 - `get_metrologists_by_lab(request, lab_id)` — **только роль `director`**
@@ -203,19 +221,26 @@
 
 | Эндпоинт | Метод | Роль | Что делает |
 |---|---|---|---|
-| `orders/<id>/assign-lab/` | PUT | director, gen_director | *(изменение)* теперь требует `metrologist_id` наравне с `lab_id`; проверяет, что метролог активен, роли `metrolog`, принадлежит выбранной лаборатории |
+| `orders/<id>/assign-lab/` | PUT | ~~director, gen_director~~ → **director** | *(изменение)* `gen_director` убран из разрешённых ролей; теперь требует `metrologist_id` наравне с `lab_id`; проверяет, что метролог активен, роли `metrolog`, принадлежит выбранной лаборатории |
 | `orders/<id>/status/` | PUT | client, metrolog | *(изменение)* для роли metrolog — доп. проверка `order.metrologist_id == request.user.id` |
 | `orders/` (GET) | GET | manager, metrolog | *(изменение)* для роли metrolog — игнорирует `labId`, фильтрует по `metrologist_id == request.user.id` |
 | `orders/<id>/submit-expertise/` | PUT | metrolog | *(новый)* только из статуса `expertise`, только назначенный метролог; сохраняет 2 файла-драфта + `expertise_conclusion`; ставит `status = in_work` |
 | `api/users/metrologists/<lab_id>/` | GET | director | *(новый)* список активных метрологов выбранной лаборатории |
 
-Право `assign_to_lab` остаётся за `director`/`gen_director` без изменений
-(это существующее право подписи/направления, не новый функционал по
-назначению метрологов — новый функционал `get_metrologists_by_lab`
-ограничен только `director`).
+`assign_to_lab` сужается до `director` симметрично `get_metrologists_by_lab`
+— оба довода одинаковы: `gen_director` не участвует в этом процессе. Как
+следствие, `GenDirector.tsx` теряет вкладку "Направить на исполнение" (см.
+раздел "Назначение директором" выше и Frontend-сводку ниже).
 
 ## Frontend — сводка изменений по файлам
 
+- **`GenDirector.tsx`** — вкладка "Направить на исполнение" удаляется
+  целиком: состояние `activeTab`, `assignOrders`, `laboratories`,
+  `selectedLabs`, `assigning`, функция `handleAssign`, кнопка-переключатель
+  вкладки и весь JSX-блок `activeTab === 'assign'`; `fetchAll` перестаёт
+  запрашивать `/orders/status/awaiting_delivery` и `laboratoryApi.getAll()`.
+  Остаётся только "Финальное подписание" — единственная функция
+  `gen_director` в этом процессе.
 - **`Director.tsx`** — вкладка "assign": второй `<select>` для метролога,
   подгружаемый по выбранной лаборатории через
   `userApi.getMetrologistsByLab(labId)`; `handleAssign` передаёт оба id;
@@ -253,13 +278,16 @@
 
 1. Backend: модели (`Order.Status`, `OrderItem`/`Order` новые поля) +
    миграция.
-2. Backend: сериализаторы + вьюхи (`assign_to_lab`, `update_order_status`,
-   `orders_list`, `submit_expertise`, `get_metrologists_by_lab` + роут) +
+2. Backend: сериализаторы + вьюхи (`assign_to_lab` — сужение до `director`
+   + обязательный `metrologist_id`, `update_order_status`, `orders_list`,
+   `submit_expertise`, `get_metrologists_by_lab` + роут) +
    `orderApi`/`userApi` в `services/api.ts` + `types/index.ts`.
-3. Frontend: `Director.tsx` — выбор метролога.
-4. Frontend: `Queue.tsx` — фильтр видимости + обработка `expertise`.
-5. Frontend: `CreateOrder.tsx` — новые поля и вложения.
-6. Frontend: `Orders.tsx` — `statusLabels`/`statusColors`, "Исх. №".
+3. Frontend: `GenDirector.tsx` — удалить вкладку "Направить на исполнение"
+   (иначе после шага 2 она начнёт падать с 403/400).
+4. Frontend: `Director.tsx` — выбор метролога.
+5. Frontend: `Queue.tsx` — фильтр видимости + обработка `expertise`.
+6. Frontend: `CreateOrder.tsx` — новые поля и вложения.
+7. Frontend: `Orders.tsx` — `statusLabels`/`statusColors`, "Исх. №".
 
 ## Открытые риски (не блокируют, но стоит держать в голове)
 

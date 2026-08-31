@@ -181,7 +181,10 @@ export default function GenDirector() {
               </span>
             )}
           </button>
-          <button onClick={() => setActiveTab('assign')} className={tabClass('assign')} style={{ marginBottom: 0 }}>
+          {/* Направление на исполнение теперь требует выбора ИСП (assign_to_lab — только
+              director); ген.директор в этом действии не участвует, вкладка отключена. */}
+          <button disabled title="Направление на исполнение теперь выполняет только директор"
+            className={`${tabClass('assign')} opacity-40 cursor-not-allowed`} style={{ marginBottom: 0 }}>
             Направить на исполнение
             {assignOrders.length > 0 && (
               <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">

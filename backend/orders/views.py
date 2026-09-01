@@ -773,26 +773,51 @@ ROLE_SIGN_LABELS = {
     "approver": "Согласующий",
     "financier": "Финансист",
     "director": "Директор",
+    "client": "Клиент",
+    "gen_director": "Ген.директор",
 }
 
 
-def _sign_role(request, order_id, role):
+def _sign_role(request, order_id, role, extra_check=None, check_pending_approval=True,
+                before_save=None, after_save=None):
+    """
+    extra_check(contract) -> str | None — доп. условие допуска к подписи сверх
+    общих (нужно client/gen_director: допуск зависит от того, подписали ли уже
+    другие, а не только от отсутствия собственной подписи).
+    before_save(contract) — мутирует контракт до сохранения, в той же транзакции,
+    что и флаг подписи (нужно gen_director: статус и рег.номер выставляются
+    одним UPDATE вместе с флагом, а не отдельным сохранением).
+    after_save(request, order_id, contract) — что сделать после сохранения; по
+    умолчанию — уведомление клиента при завершении тройки (поведение approver/
+    financier/director).
+    check_pending_approval — временно False для client/gen_director (Шаг 2:
+    чистый рефакторинг без исправления Б2); станет обязательным для всех на Шаге 3.
+    """
     contract, err = _get_contract_or_404(order_id)
     if err:
         return err
-    if contract.status != "pending_approval":
+    if check_pending_approval and contract.status != "pending_approval":
         return Response({"message": "Договор не на согласовании"}, status=400)
-    if not contract.contract_file:
+    if check_pending_approval and not contract.contract_file:
         return Response({"message": "Менеджер ещё не загрузил файл договора"}, status=400)
+    if extra_check:
+        extra_message = extra_check(contract)
+        if extra_message:
+            return Response({"message": extra_message}, status=400)
     if getattr(contract, f"{role}_signed"):
         return Response({"message": f"{ROLE_SIGN_LABELS[role]} уже подписал"}, status=400)
 
     setattr(contract, f"{role}_signed", True)
     setattr(contract, f"{role}_signed_at", timezone.now())
     setattr(contract, f"{role}_signed_by_id", request.user.id)
+    if before_save:
+        before_save(contract)
     contract.save()
 
-    _notify_client_if_trio_signed(contract)
+    if after_save:
+        after_save(request, order_id, contract)
+    else:
+        _notify_client_if_trio_signed(contract)
 
     return Response(ContractSerializer(contract).data)
 
@@ -822,56 +847,60 @@ def approve_contract(request, order_id):
     return _sign_role(request, order_id, "approver")
 
 
-@api_view(["PUT"])
-@permission_classes([has_role("client")])
-def sign_by_client(request, order_id):
-    contract, err = _get_contract_or_404(order_id)
-    if err:
-        return err
+def _client_sign_precondition(contract):
     if not contract.is_trio_signed:
-        return Response({"message": "Договор ещё не подписан всеми сторонами организации"}, status=400)
-    if contract.client_signed:
-        return Response({"message": "Клиент уже подписал"}, status=400)
+        return "Договор ещё не подписан всеми сторонами организации"
+    return None
 
-    contract.client_signed = True
-    contract.client_signed_at = timezone.now()
-    contract.client_signed_by_id = request.user.id
-    contract.save()
 
+def _notify_gen_director_after_client_signs(request, order_id, contract):
     order = Order.objects.filter(id=order_id).first()
     if order:
         notification_services.notify_gen_director_for_signing(order_id, order.order_number)
 
-    return Response(ContractSerializer(contract).data)
-
 
 @api_view(["PUT"])
-@permission_classes([has_role("gen_director")])
-def sign_by_gen_director(request, order_id):
-    contract, err = _get_contract_or_404(order_id)
-    if err:
-        return err
+@permission_classes([has_role("client")])
+def sign_by_client(request, order_id):
+    return _sign_role(
+        request, order_id, "client",
+        extra_check=_client_sign_precondition,
+        check_pending_approval=False,
+        after_save=_notify_gen_director_after_client_signs,
+    )
+
+
+def _gen_director_sign_precondition(contract):
     if not contract.is_trio_signed:
-        return Response({"message": "Тройка ещё не подписала договор"}, status=400)
+        return "Тройка ещё не подписала договор"
     if not contract.client_signed:
-        return Response({"message": "Клиент ещё не подписал договор"}, status=400)
-    if contract.gen_director_signed:
-        return Response({"message": "Ген.директор уже подписал"}, status=400)
+        return "Клиент ещё не подписал договор"
+    return None
 
-    contract.gen_director_signed = True
-    contract.gen_director_signed_at = timezone.now()
-    contract.gen_director_signed_by_id = request.user.id
+
+def _finalize_signed_contract(contract):
     contract.status = "signed"
-    contract.registration_number = f"РЕГ-{timezone.now().strftime('%Y%m%d')}-{order_id}"
-    contract.save()
+    contract.registration_number = f"РЕГ-{timezone.now().strftime('%Y%m%d')}-{contract.order_id}"
 
+
+def _advance_order_after_gen_director_signs(request, order_id, contract):
     order = Order.objects.filter(id=order_id).first()
     if order:
         order.status = "awaiting_payment"
         order.save()
         notification_services.notify_financiers_contract_signed(order_id, order.order_number)
 
-    return Response(ContractSerializer(contract).data)
+
+@api_view(["PUT"])
+@permission_classes([has_role("gen_director")])
+def sign_by_gen_director(request, order_id):
+    return _sign_role(
+        request, order_id, "gen_director",
+        extra_check=_gen_director_sign_precondition,
+        check_pending_approval=False,
+        before_save=_finalize_signed_contract,
+        after_save=_advance_order_after_gen_director_signs,
+    )
 
 
 @api_view(["PUT"])

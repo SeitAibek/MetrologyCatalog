@@ -3,6 +3,7 @@ from django.db import models
 
 class Order(models.Model):
     class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
         PENDING_CONTRACT = "pending_contract", "Pending Contract"
         REVISION = "revision", "Revision"
         AWAITING_APPROVAL = "awaiting_approval", "Awaiting Approval"

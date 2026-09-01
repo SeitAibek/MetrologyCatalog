@@ -71,7 +71,23 @@ def _check_order_read_access(request, order):
         return Response({"message": "Заявка вам не принадлежит"}, status=403)
     if role == "metrolog" and order.metrologist_id != request.user.id:
         return Response({"message": "Заявка не назначена вам"}, status=403)
+    # Черновик виден только автору — это правило действует поверх ролевого
+    # доступа, включая штабные роли с обычно безусловным доступом: их id
+    # никогда не совпадёт с client_id заявки, значит доступ закрыт для всех,
+    # кроме реального автора, каким бы ни был запрашивающий request.user.role.
+    if order.status == "draft" and order.client_id != request.user.id:
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
     return None
+
+
+def _apply_if_present(request, obj, field):
+    # Отсутствие ключа в теле запроса значит "не менялось" и не должно затирать
+    # уже сохранённое значение — актуально для вложений: фронт не перезаливает
+    # файл, если пользователь его не менял, и .get(field) с дефолтом None в
+    # этом случае молча обнулил бы уже сохранённое вложение (тот же класс
+    # бага, что был в форме доработки заявки).
+    if field in request.data:
+        setattr(obj, field, request.data.get(field))
 
 
 def _decode_base64_or_error(data, label="Файл"):
@@ -140,18 +156,23 @@ def orders_list(request):
         if request.user.role == "metrolog":
             # Личное назначение — метролог видит только заявки, назначенные лично ему,
             # а не всю лабораторию (см. assign_to_lab).
-            orders = Order.objects.filter(metrologist_id=request.user.id)
+            orders = Order.objects.filter(metrologist_id=request.user.id).exclude(status="draft")
         else:
             lab_id = request.query_params.get("labId")
             if lab_id:
-                orders = Order.objects.filter(assigned_lab_id=lab_id)
+                orders = Order.objects.filter(assigned_lab_id=lab_id).exclude(status="draft")
             else:
-                orders = Order.objects.all()
+                # .exclude(status="draft"), а не полагаемся на то, что черновик и так
+                # никому не назначен — этот же список отдаётся Reports.tsx без
+                # дополнительной фильтрации по стадии.
+                orders = Order.objects.exclude(status="draft")
         return Response(OrderSerializer(orders, many=True).data)
 
     err = _require_role(request, "client", "manager")
     if err:
         return err
+
+    is_draft = bool(request.data.get("is_draft"))
 
     client_id = request.data.get("client_id")
     service_id = request.data.get("service_id")
@@ -172,7 +193,9 @@ def orders_list(request):
         return Response({"message": "ID услуги обязателен"}, status=400)
     if not lab_id:
         return Response({"message": "ID лаборатории обязателен"}, status=400)
-    if not due_date:
+    # Дата сдачи необязательна для черновика — черновик по определению может
+    # быть неполным; при реальной отправке (is_draft=False) она обязательна.
+    if not is_draft and not due_date:
         return Response({"message": "Дата сдачи обязательна"}, status=400)
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
@@ -195,8 +218,8 @@ def orders_list(request):
             client_id=client_id,
             service_id=service_id,
             lab_id=lab_id,
-            status="pending_contract",
-            due_date=due_date,
+            status="draft" if is_draft else "pending_contract",
+            due_date=due_date or None,
             client_comment=client_comment,
             power_of_attorney_file=power_of_attorney_file,
             power_of_attorney_file_name=power_of_attorney_file_name,
@@ -206,14 +229,94 @@ def orders_list(request):
 
         _create_order_items(order, order_items)
 
-        Contract.objects.create(
-            order=order,
-            contract_number=f"CNT-{int(time.time() * 1000)}",
-        )
+        # Договор и уведомление менеджерам — только при реальной подаче.
+        # Черновик ещё не подан, согласовывать и показывать менеджеру нечего.
+        if not is_draft:
+            Contract.objects.create(
+                order=order,
+                contract_number=f"CNT-{int(time.time() * 1000)}",
+            )
 
-    notification_services.notify_managers_new_order(order.order_number)
+    if not is_draft:
+        notification_services.notify_managers_new_order(order.order_number)
 
     return Response(OrderSerializer(order).data, status=201)
+
+
+@api_view(["PUT"])
+@permission_classes([has_role("client")])
+def save_draft(request, id):
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
+    if order.status != "draft":
+        return Response({"message": "Редактировать можно только черновик"}, status=400)
+    if order.client_id != request.user.id:
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
+
+    is_draft = bool(request.data.get("is_draft"))
+
+    service_id = request.data.get("service_id")
+    lab_id = request.data.get("lab_id")
+    due_date = request.data.get("due_date")
+    order_items = request.data.get("order_items")
+    client_comment = request.data.get("client_comment")
+
+    if not service_id:
+        return Response({"message": "ID услуги обязателен"}, status=400)
+    if not lab_id:
+        return Response({"message": "ID лаборатории обязателен"}, status=400)
+    if not is_draft and not due_date:
+        return Response({"message": "Дата сдачи обязательна"}, status=400)
+    if not order_items:
+        return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
+
+    items_error = _validate_order_items(order_items)
+    if items_error:
+        return items_error
+
+    # Ключ отсутствует в теле запроса = вложение не менялось (фронт не
+    # перезаливает файл, который клиент не трогал) — обновляем только то, что
+    # реально пришло, не затирая уже сохранённое.
+    for field in (
+        "power_of_attorney_file", "power_of_attorney_file_name",
+        "tech_documentation_file", "tech_documentation_file_name",
+    ):
+        _apply_if_present(request, order, field)
+
+    if request.data.get("power_of_attorney_file"):
+        _, decode_err = _decode_base64_or_error(order.power_of_attorney_file, "Доверенность")
+        if decode_err:
+            return decode_err
+    if request.data.get("tech_documentation_file"):
+        _, decode_err = _decode_base64_or_error(order.tech_documentation_file, "Документация на СИ")
+        if decode_err:
+            return decode_err
+
+    order.service_id = service_id
+    order.lab_id = lab_id
+    order.due_date = due_date or None
+    order.client_comment = client_comment
+    if not is_draft:
+        order.status = "pending_contract"
+
+    with transaction.atomic():
+        order.save()
+        OrderItem.objects.filter(order_id=id).delete()
+        _create_order_items(order, order_items)
+
+        # Черновик при создании не заводил Contract (см. orders_list POST) —
+        # заводим его сейчас, в момент фактической подачи.
+        if not is_draft:
+            Contract.objects.create(
+                order=order,
+                contract_number=f"CNT-{int(time.time() * 1000)}",
+            )
+
+    if not is_draft:
+        notification_services.notify_managers_new_order(order.order_number)
+
+    return Response(OrderSerializer(order).data)
 
 
 @api_view(["GET"])
@@ -231,13 +334,17 @@ def get_my_orders(request):
 @api_view(["GET"])
 @permission_classes([has_role("manager", "metrolog")])
 def get_orders_by_lab_id(request, lab_id):
-    orders = Order.objects.filter(assigned_lab_id=lab_id)
+    orders = Order.objects.filter(assigned_lab_id=lab_id).exclude(status="draft")
     return Response(OrderSerializer(orders, many=True).data)
 
 
 @api_view(["GET"])
 @permission_classes([has_role("approver", "director", "financier", "gen_director")])
 def get_orders_by_status(request, status):
+    # status приходит из URL как есть — без явного отказа "draft" эти четыре
+    # штабные роли могли бы получить черновики всех клиентов одним GET-запросом.
+    if status == "draft":
+        return Response({"message": "Доступ запрещён"}, status=403)
     orders = Order.objects.filter(status=status)
     return Response(OrderSerializer(orders, many=True).data)
 

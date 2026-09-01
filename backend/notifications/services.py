@@ -33,13 +33,6 @@ def notify_managers_resubmit(order_number: str):
                "order_status")
 
 
-def notify_approvers_contract_ready(order_id: int, order_number: str):
-    for approver in User.objects.filter(role="approver"):
-        create(approver.id, order_id,
-               f"Договор по заявке {order_number} ожидает вашего согласования",
-               "approval_required")
-
-
 def notify_parallel_approvers(order_id: int, order_number: str):
     message = f"Договор по заявке {order_number} ожидает вашей подписи"
     for role in ("approver", "financier", "director"):
@@ -47,25 +40,11 @@ def notify_parallel_approvers(order_id: int, order_number: str):
             create(u.id, order_id, message, "approval_required")
 
 
-def notify_director_approved(order_id: int, order_number: str):
-    for director in User.objects.filter(role="director"):
-        create(director.id, order_id,
-               f"Договор по заявке {order_number} согласован и ожидает вашей подписи",
-               "approval_required")
-
-
 def notify_managers_rejected(order_id: int, order_number: str, reason: str):
     for manager in User.objects.filter(role="manager"):
         create(manager.id, order_id,
                f"Договор по заявке {order_number} отклонён. Причина: {reason}",
                "order_status")
-
-
-def notify_financiers_director_signed(order_id: int, order_number: str):
-    for financier in User.objects.filter(role="financier"):
-        create(financier.id, order_id,
-               f"Договор по заявке {order_number} подписан директором. Сформируйте счёт на оплату.",
-               "document_ready")
 
 
 def notify_client_invoice_sent(client_id: int, order_id: int, order_number: str):

@@ -6,7 +6,6 @@ def _translate_status(status: str) -> str:
         "pending_contract": "Ожидает создания договора",
         "revision": "Возвращена на доработку",
         "awaiting_approval": "На согласовании",
-        "awaiting_director": "У директора",
         "awaiting_payment": "Ожидает оплаты",
         "awaiting_delivery": "Ожидает доставки",
         "received_in_lab": "Принято в лабораторию",

@@ -45,7 +45,6 @@ export type OrderStatus =
   | 'pending_contract'
   | 'revision'
   | 'awaiting_approval'
-  | 'awaiting_director'
   | 'awaiting_payment'
   | 'pending_delivery'
   | 'awaiting_delivery'

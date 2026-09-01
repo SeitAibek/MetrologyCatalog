@@ -6,7 +6,6 @@ class Order(models.Model):
         PENDING_CONTRACT = "pending_contract", "Pending Contract"
         REVISION = "revision", "Revision"
         AWAITING_APPROVAL = "awaiting_approval", "Awaiting Approval"
-        AWAITING_DIRECTOR = "awaiting_director", "Awaiting Director"
         AWAITING_PAYMENT = "awaiting_payment", "Awaiting Payment"
         PENDING_DELIVERY = "pending_delivery", "Pending Delivery"
         AWAITING_DELIVERY = "awaiting_delivery", "Awaiting Delivery"

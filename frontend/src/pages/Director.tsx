@@ -17,6 +17,7 @@ export default function Director() {
 
   const [signing, setSigning] = useState<number | null>(null);
   const [showReject, setShowReject] = useState<number | null>(null);
+  const [rejecting, setRejecting] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState<Record<number, string>>({});
   const [downloadingContract, setDownloadingContract] = useState<number | null>(null);
   const [selectedLabs, setSelectedLabs] = useState<Record<number, string>>({});
@@ -94,11 +95,14 @@ export default function Director() {
     const reason = rejectReason[orderId];
     if (!reason?.trim()) { setError('Укажите причину отклонения'); return; }
     try {
+      setRejecting(orderId);
       await contractApi.reject(orderId, user?.id || 0, reason, 'director');
       setSignOrders(prev => prev.filter(o => o.id !== orderId));
       setShowReject(null);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Ошибка при отклонении');
+    } finally {
+      setRejecting(null);
     }
   };
 
@@ -276,9 +280,9 @@ export default function Director() {
                           className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:border-red-400 resize-none"
                           rows={3} style={{ fontFamily: 'inherit', marginBottom: '8px' }} />
                         <div className="flex gap-2">
-                          <button onClick={() => handleReject(order.id)}
-                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg border-none cursor-pointer text-sm"
-                            style={{ marginBottom: 0 }}>Отклонить</button>
+                          <button onClick={() => handleReject(order.id)} disabled={rejecting === order.id}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed text-white font-medium rounded-lg border-none cursor-pointer text-sm"
+                            style={{ marginBottom: 0 }}>{rejecting === order.id ? 'Отклонение...' : 'Отклонить'}</button>
                           <button onClick={() => setShowReject(null)}
                             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium rounded-lg border-none cursor-pointer text-sm"
                             style={{ marginBottom: 0 }}>Отмена</button>

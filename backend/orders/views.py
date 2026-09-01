@@ -63,6 +63,17 @@ def _require_role(request, *allowed_roles):
     return None
 
 
+def _check_order_read_access(request, order):
+    # Кто вообще допущен до вьюхи — решает @permission_classes на ней. Здесь
+    # только владение для ролей, у которых заказы личные, а не общие на роль.
+    role = request.user.role
+    if role == "client" and order.client_id != request.user.id:
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
+    if role == "metrolog" and order.metrologist_id != request.user.id:
+        return Response({"message": "Заявка не назначена вам"}, status=403)
+    return None
+
+
 def _decode_base64_or_error(data, label="Файл"):
     # Битый base64 (например, оборванная загрузка) иначе валит decode необработанным
     # исключением (500) вместо понятного ответа клиенту.
@@ -155,6 +166,8 @@ def orders_list(request):
 
     if not client_id:
         return Response({"message": "ID клиента обязателен"}, status=400)
+    if request.user.role == "client" and str(client_id) != str(request.user.id):
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
     if not service_id:
         return Response({"message": "ID услуги обязателен"}, status=400)
     if not lab_id:
@@ -209,6 +222,8 @@ def get_my_orders(request):
     client_id = request.query_params.get("clientId")
     if not client_id:
         return Response({"message": "clientId обязателен"}, status=400)
+    if str(client_id) != str(request.user.id):
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
     orders = Order.objects.filter(client_id=client_id)
     return Response(OrderSerializer(orders, many=True).data)
 
@@ -230,17 +245,30 @@ def get_orders_by_status(request, status):
 @api_view(["GET"])
 @permission_classes([has_role("client", "manager")])
 def get_order_items(request, id):
+    order, err = _get_order_or_404(id)
+    if err:
+        return err
+    err = _check_order_read_access(request, order)
+    if err:
+        return err
+
     items = OrderItem.objects.filter(order_id=id)
     return Response(OrderItemSerializer(items, many=True).data)
 
 
 @api_view(["GET", "PUT"])
+@permission_classes([has_role(
+    "client", "manager", "metrolog", "director", "approver", "financier", "gen_director"
+)])
 def order_detail(request, id):
     order, err = _get_order_or_404(id)
     if err:
         return err
 
     if request.method == "GET":
+        err = _check_order_read_access(request, order)
+        if err:
+            return err
         return Response(OrderSerializer(order).data)
 
     err = _require_role(request, "manager")
@@ -910,6 +938,10 @@ def download_contract(request, order_id):
     except (Contract.DoesNotExist, Order.DoesNotExist):
         return Response({"message": "Договор не найден"}, status=404)
 
+    err = _check_order_read_access(request, order)
+    if err:
+        return err
+
     if contract.contract_file:
         file_bytes, decode_err = _decode_base64_or_error(contract.contract_file, "Файл договора")
         if decode_err:
@@ -931,6 +963,9 @@ def download_certificate(request, order_id):
     order, err = _get_order_or_404(order_id)
     if err:
         return err
+    err = _check_order_read_access(request, order)
+    if err:
+        return err
 
     result = Result.objects.filter(order_id=order_id).first()
 
@@ -947,6 +982,9 @@ def download_invoice(request, order_id):
     order, err = _get_order_or_404(order_id, message="Заявка не найдена")
     if err:
         return err
+    err = _check_order_read_access(request, order)
+    if err:
+        return err
 
     pdf_bytes = pdf_service.generate_invoice_pdf(order)
 
@@ -958,5 +996,12 @@ def download_invoice(request, order_id):
 @api_view(["GET"])
 @permission_classes([has_role("client", "manager", "metrolog")])
 def get_results_by_order(request, order_id):
+    order, err = _get_order_or_404(order_id)
+    if err:
+        return err
+    err = _check_order_read_access(request, order)
+    if err:
+        return err
+
     results = Result.objects.filter(order_id=order_id)
     return Response(ResultSerializer(results, many=True).data)

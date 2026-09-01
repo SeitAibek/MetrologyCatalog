@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { orderApi } from '../services/api';
-import type { Order } from '../types';
+import type { Order, OrderStatus } from '../types';
+import { ORDER_STATUS_LABELS_REPORTS, ORDER_STATUS_COLORS_MUTED } from '../constants/orderStatus';
 
 // Страница отчётов для роли manager
 // Показывает все заявки в системе с фильтрацией по статусу и подсчётом выручки
@@ -10,39 +11,8 @@ export default function Reports() {
   const [error, setError] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
-  // Словарь для перевода статусов на русский язык
-  const statusLabels: Record<string, string> = {
-    pending_contract: 'Ожидает договора',
-    revision: 'На доработке',
-    awaiting_approval: 'На согласовании',
-    awaiting_payment: 'Ожидает оплаты',
-    pending_delivery: 'Ожидает направления',
-    awaiting_delivery: 'Ожидает доставки',
-    received_in_lab: 'Принято в лаб',
-    in_work: 'В работе',
-    under_review: 'На проверке',
-    completed: 'Завершено',
-    cancelled: 'Отменено',
-    annulled: 'Аннулировано',
-    terminated: 'Расторгнуто',
-  };
-
-  // Цвета бейджей для каждого статуса
-  const statusColors: Record<string, { bg: string; text: string }> = {
-    pending_contract: { bg: 'bg-blue-100', text: 'text-blue-700' },
-    revision: { bg: 'bg-red-100', text: 'text-red-700' },
-    awaiting_approval: { bg: 'bg-indigo-100', text: 'text-indigo-700' },
-    awaiting_payment: { bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    pending_delivery: { bg: 'bg-lime-100', text: 'text-lime-700' },
-    awaiting_delivery: { bg: 'bg-amber-100', text: 'text-amber-700' },
-    received_in_lab: { bg: 'bg-purple-100', text: 'text-purple-700' },
-    in_work: { bg: 'bg-pink-100', text: 'text-pink-700' },
-    under_review: { bg: 'bg-orange-100', text: 'text-orange-700' },
-    completed: { bg: 'bg-green-100', text: 'text-green-700' },
-    cancelled: { bg: 'bg-gray-200', text: 'text-gray-600' },
-    annulled: { bg: 'bg-gray-200', text: 'text-gray-600' },
-    terminated: { bg: 'bg-gray-200', text: 'text-gray-600' },
-  };
+  const statusLabels = ORDER_STATUS_LABELS_REPORTS;
+  const statusColors = ORDER_STATUS_COLORS_MUTED;
 
   useEffect(() => { fetchOrders(); }, []);
 
@@ -70,8 +40,8 @@ export default function Reports() {
   const formatDate = (dateString?: string) =>
     dateString ? new Date(dateString).toLocaleDateString('ru-RU') : '—';
 
-  const getStatusClass = (status: string) =>
-    statusColors[status] || { bg: 'bg-gray-100', text: 'text-gray-500' };
+  const getStatusClass = (status: OrderStatus) =>
+    statusColors[status] ?? { bg: 'bg-gray-100', text: 'text-gray-500' };
 
   if (isLoading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">

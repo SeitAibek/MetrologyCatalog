@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore';
 import api, { orderApi, messageApi } from '../services/api';
 import type { Order, Message } from '../types';
 import { downloadCertificate, downloadContract } from '../utils/download';
+import { ORDER_STATUS_LABELS_QUEUE, ORDER_STATUS_COLORS } from '../constants/orderStatus';
 
 export default function Queue() {
   const { user } = useAuthStore();
@@ -27,22 +28,7 @@ export default function Queue() {
   const [messageText, setMessageText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
 
-  const statusLabels: Record<string, string> = {
-    pending_contract:  'Ожидает договора',
-    revision:          'На доработке',
-    awaiting_approval: 'На согласовании',
-    awaiting_payment:  'Ожидает оплаты',
-    pending_delivery:  'Оплата получена',
-    awaiting_delivery: 'Ожидает направления',
-    received_in_lab:   'Принято в лаб',
-    expertise:         'Экспертиза документации',
-    in_work:           'В работе',
-    under_review:      'На проверке',
-    completed:         'Завершено',
-    cancelled:         'Отменено',
-    annulled:          'Аннулировано',
-    terminated:        'Расторгнуто',
-  };
+  const statusLabels = ORDER_STATUS_LABELS_QUEUE;
 
   const statusFlow: Record<string, string> = {
     received_in_lab: 'expertise',
@@ -51,22 +37,7 @@ export default function Queue() {
     under_review:    'completed',
   };
 
-  const statusColors: Record<string, { bg: string; text: string }> = {
-    pending_contract:  { bg: 'bg-slate-100',  text: 'text-slate-600' },
-    revision:          { bg: 'bg-orange-100', text: 'text-orange-700' },
-    awaiting_approval: { bg: 'bg-blue-100',   text: 'text-blue-700' },
-    awaiting_payment:  { bg: 'bg-yellow-100', text: 'text-yellow-700' },
-    pending_delivery:  { bg: 'bg-lime-100',   text: 'text-lime-700' },
-    awaiting_delivery: { bg: 'bg-amber-100',  text: 'text-amber-700' },
-    received_in_lab:   { bg: 'bg-purple-100', text: 'text-purple-700' },
-    expertise:         { bg: 'bg-indigo-100', text: 'text-indigo-700' },
-    in_work:           { bg: 'bg-pink-100',   text: 'text-pink-700' },
-    under_review:      { bg: 'bg-orange-100', text: 'text-orange-700' },
-    completed:         { bg: 'bg-green-100',  text: 'text-green-700' },
-    cancelled:         { bg: 'bg-gray-100',   text: 'text-gray-500' },
-    annulled:          { bg: 'bg-red-100',    text: 'text-red-600' },
-    terminated:        { bg: 'bg-red-100',    text: 'text-red-600' },
-  };
+  const statusColors = ORDER_STATUS_COLORS;
 
   useEffect(() => { fetchOrders(); }, []);
 

@@ -53,6 +53,8 @@ export default function Orders() {
   const [resubmitOrder, setResubmitOrder] = useState<Order | null>(null);
   const [resubmitItems, setResubmitItems] = useState<Array<{
     id?: number; deviceType: string; model: string; serialNumber: string; quantity: number;
+    manufacturerName: string; manufacturerAddress: string; manufacturerCountry: string;
+    metrologicalCharacteristics: string;
   }>>([]);
   const [resubmitForm, setResubmitForm] = useState({ serviceId: '', labId: '', dueDate: '', clientComment: '' });
   const [resubmitLoading, setResubmitLoading] = useState(false);
@@ -351,10 +353,16 @@ export default function Orders() {
         model: item.model || '',
         serialNumber: item.serialNumber,
         quantity: item.quantity,
-        
+        manufacturerName: item.manufacturerName || '',
+        manufacturerAddress: item.manufacturerAddress || '',
+        manufacturerCountry: item.manufacturerCountry || '',
+        metrologicalCharacteristics: item.metrologicalCharacteristics || '',
       })));
     } catch {
-      setResubmitItems([{ deviceType: '', model: '', serialNumber: '', quantity: 1 }]);
+      setResubmitItems([{
+        deviceType: '', model: '', serialNumber: '', quantity: 1,
+        manufacturerName: '', manufacturerAddress: '', manufacturerCountry: '', metrologicalCharacteristics: '',
+      }]);
     }
   };
 
@@ -363,7 +371,10 @@ export default function Orders() {
   };
 
   const handleAddResubmitItem = () => {
-    setResubmitItems(prev => [...prev, { deviceType: '', model: '', serialNumber: '', quantity: 1 }]);
+    setResubmitItems(prev => [...prev, {
+      deviceType: '', model: '', serialNumber: '', quantity: 1,
+      manufacturerName: '', manufacturerAddress: '', manufacturerCountry: '', metrologicalCharacteristics: '',
+    }]);
   };
 
   const handleRemoveResubmitItem = (index: number) => {
@@ -374,6 +385,16 @@ export default function Orders() {
   // ─── Клиент: отправить исправленную заявку ────────────────────────────
   const handleResubmit = async () => {
     if (!resubmitOrder) return;
+
+    const hasEmptyRequiredField = resubmitItems.some(item =>
+      !item.deviceType || !item.serialNumber || !item.manufacturerName ||
+      !item.manufacturerAddress || !item.manufacturerCountry || !item.metrologicalCharacteristics
+    );
+    if (hasEmptyRequiredField) {
+      setError('Заполните все обязательные поля приборов');
+      return;
+    }
+
     try {
       setResubmitLoading(true);
       await orderApi.resubmit(resubmitOrder.id, {
@@ -386,7 +407,10 @@ export default function Orders() {
           model: item.model,
           serialNumber: item.serialNumber,
           quantity: item.quantity,
-          
+          manufacturerName: item.manufacturerName,
+          manufacturerAddress: item.manufacturerAddress,
+          manufacturerCountry: item.manufacturerCountry,
+          metrologicalCharacteristics: item.metrologicalCharacteristics,
         })),
       });
       setResubmitOrder(null);
@@ -1164,6 +1188,36 @@ export default function Orders() {
                             onChange={e => handleResubmitItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
                             className={inputClass} style={{ fontFamily: 'inherit', marginBottom: 0 }} />
                         </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Производитель *</label>
+                          <input type="text" value={item.manufacturerName}
+                            onChange={e => handleResubmitItemChange(index, 'manufacturerName', e.target.value)}
+                            placeholder="Наименование завода-изготовителя" className={inputClass}
+                            style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Адрес производства *</label>
+                          <input type="text" value={item.manufacturerAddress}
+                            onChange={e => handleResubmitItemChange(index, 'manufacturerAddress', e.target.value)}
+                            placeholder="Адрес завода-изготовителя" className={inputClass}
+                            style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Страна производства *</label>
+                          <input type="text" value={item.manufacturerCountry}
+                            onChange={e => handleResubmitItemChange(index, 'manufacturerCountry', e.target.value)}
+                            placeholder="Страна изготовления" className={inputClass}
+                            style={{ fontFamily: 'inherit', marginBottom: 0 }} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Метрологические характеристики *</label>
+                        <textarea value={item.metrologicalCharacteristics}
+                          onChange={e => handleResubmitItemChange(index, 'metrologicalCharacteristics', e.target.value)}
+                          placeholder="Диапазон измерений, погрешность, класс точности и т.д."
+                          rows={2}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all bg-white resize-none"
+                          style={{ fontFamily: 'inherit', marginBottom: 0 }} />
                       </div>
                     </div>
                   ))}

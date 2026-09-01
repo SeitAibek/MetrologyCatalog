@@ -8,6 +8,8 @@ export default function CreateOrder() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuthStore();
+  const draftId: number | undefined = location.state?.draftId;
+
   const [services, setServices] = useState<Service[]>([]);
   const [laboratories, setLaboratories] = useState<Laboratory[]>([]);
   const [clients, setClients] = useState<User[]>([]);
@@ -31,8 +33,14 @@ export default function CreateOrder() {
     clientComment: '',
   });
 
+  // Новый выбранный файл — та же схема, что и при первой подаче. Существующее
+  // имя — то, что уже сохранено в черновике на бэкенде: пока пользователь не
+  // выбрал новый файл, содержимое вложения в запрос вообще не попадает (см.
+  // handleSave) — save_draft не трогает то, что не пришло, и не затирает его.
   const [powerOfAttorney, setPowerOfAttorney] = useState<{ data: string; name: string } | null>(null);
   const [techDocumentation, setTechDocumentation] = useState<{ data: string; name: string } | null>(null);
+  const [existingPowerOfAttorneyName, setExistingPowerOfAttorneyName] = useState<string | null>(null);
+  const [existingTechDocumentationName, setExistingTechDocumentationName] = useState<string | null>(null);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -48,6 +56,32 @@ export default function CreateOrder() {
       setServices(results[0].data);
       setLaboratories(results[1].data);
       if (user?.role === 'manager' && results[2]) setClients(results[2].data);
+
+      if (draftId) {
+        const [orderRes, itemsRes] = await Promise.all([
+          orderApi.getById(draftId),
+          api.get(`/orders/${draftId}/items`),
+        ]);
+        const order = orderRes.data;
+        const item = itemsRes.data[0];
+        setFormData({
+          serviceId: order.serviceId?.toString() || '',
+          labId: order.labId?.toString() || '',
+          deviceType: item?.deviceType || '',
+          model: item?.model || '',
+          serialNumber: item?.serialNumber || '',
+          quantity: (item?.quantity ?? 1).toString(),
+          manufacturerName: item?.manufacturerName || '',
+          manufacturerAddress: item?.manufacturerAddress || '',
+          manufacturerCountry: item?.manufacturerCountry || '',
+          metrologicalCharacteristics: item?.metrologicalCharacteristics || '',
+          dueDate: order.dueDate || '',
+          clientComment: order.clientComment || '',
+        });
+        setExistingPowerOfAttorneyName(order.powerOfAttorneyFileName || null);
+        setExistingTechDocumentationName(order.techDocumentationFileName || null);
+        if (user?.role === 'manager') setSelectedClientId(order.clientId);
+      }
     } catch {
       setError('Ошибка при загрузке данных');
     } finally {
@@ -82,8 +116,7 @@ export default function CreateOrder() {
     setAttachment({ data, name: file.name });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (isDraft: boolean) => {
     setError('');
     setSuccess('');
 
@@ -92,32 +125,37 @@ export default function CreateOrder() {
       return;
     }
 
-    if (!formData.serviceId || !formData.labId || !formData.deviceType || !formData.serialNumber || !formData.dueDate
-      || !formData.manufacturerName || !formData.manufacturerAddress || !formData.manufacturerCountry
-      || !formData.metrologicalCharacteristics) {
+    // Черновик по определению может быть неполным — обязательны только поля,
+    // без которых нельзя завести саму позицию (совпадает с тем, что требует
+    // схема БД). Остальное проверяется только при реальной отправке.
+    if (!formData.serviceId || !formData.labId || !formData.deviceType || !formData.serialNumber) {
       setError('Заполните все обязательные поля');
       return;
     }
-    if (!powerOfAttorney) {
-      setError('Прикрепите доверенность');
-      return;
-    }
-    if (!techDocumentation) {
-      setError('Прикрепите документацию на СИ');
-      return;
+    if (!isDraft) {
+      if (!formData.dueDate || !formData.manufacturerName || !formData.manufacturerAddress
+        || !formData.manufacturerCountry || !formData.metrologicalCharacteristics) {
+        setError('Заполните все обязательные поля');
+        return;
+      }
+      if (!powerOfAttorney && !existingPowerOfAttorneyName) {
+        setError('Прикрепите доверенность');
+        return;
+      }
+      if (!techDocumentation && !existingTechDocumentationName) {
+        setError('Прикрепите документацию на СИ');
+        return;
+      }
     }
 
     try {
-      const orderPayload = {
+      const payload: any = {
         clientId: user?.role === 'manager' ? selectedClientId : user?.id,
         serviceId: parseInt(formData.serviceId),
         labId: parseInt(formData.labId),
-        dueDate: formData.dueDate,
+        dueDate: formData.dueDate || null,
         clientComment: formData.clientComment || null,
-        powerOfAttorneyFile: powerOfAttorney.data,
-        powerOfAttorneyFileName: powerOfAttorney.name,
-        techDocumentationFile: techDocumentation.data,
-        techDocumentationFileName: techDocumentation.name,
+        isDraft,
         orderItems: [{
           deviceType: formData.deviceType,
           model: formData.model,
@@ -130,11 +168,26 @@ export default function CreateOrder() {
         }],
       };
 
-      await orderApi.create(orderPayload);
-      setSuccess('Заявка создана успешно!');
+      // Ключ попадает в payload только если выбран новый файл — иначе
+      // сохранённое на бэкенде вложение остаётся как есть (см. save_draft).
+      if (powerOfAttorney) {
+        payload.powerOfAttorneyFile = powerOfAttorney.data;
+        payload.powerOfAttorneyFileName = powerOfAttorney.name;
+      }
+      if (techDocumentation) {
+        payload.techDocumentationFile = techDocumentation.data;
+        payload.techDocumentationFileName = techDocumentation.name;
+      }
+
+      if (draftId) {
+        await orderApi.saveDraft(draftId, payload);
+      } else {
+        await orderApi.create(payload);
+      }
+      setSuccess(isDraft ? 'Черновик сохранён!' : 'Заявка отправлена успешно!');
       setTimeout(() => navigate('/orders'), 1500);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Ошибка при создании заявки');
+      setError(err.response?.data?.message || 'Ошибка при сохранении заявки');
     }
   };
 
@@ -162,7 +215,7 @@ export default function CreateOrder() {
 
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[#0A2E5C]" style={{ margin: 0, fontSize: '1.75rem' }}>
-            Новая заявка
+            {draftId ? 'Редактирование черновика' : 'Новая заявка'}
           </h1>
           <p className="text-gray-500 text-sm mt-1" style={{ margin: '4px 0 0' }}>
             Заполните форму для подачи заявки на метрологическую услугу
@@ -186,7 +239,7 @@ export default function CreateOrder() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <form onSubmit={e => e.preventDefault()} className="flex flex-col gap-6">
 
           {user?.role === 'manager' && (
             <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
@@ -268,28 +321,28 @@ export default function CreateOrder() {
                   style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Полное наименование производства *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Полное наименование производства * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
                 <input type="text" name="manufacturerName" value={formData.manufacturerName} onChange={handleChange}
-                  placeholder="Наименование завода-изготовителя" required className={inputClass}
+                  placeholder="Наименование завода-изготовителя" className={inputClass}
                   style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес производства *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес производства * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
                 <input type="text" name="manufacturerAddress" value={formData.manufacturerAddress} onChange={handleChange}
-                  placeholder="Адрес завода-изготовителя" required className={inputClass}
+                  placeholder="Адрес завода-изготовителя" className={inputClass}
                   style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Страна производства *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Страна производства * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
                 <input type="text" name="manufacturerCountry" value={formData.manufacturerCountry} onChange={handleChange}
-                  placeholder="Страна изготовления" required className={inputClass}
+                  placeholder="Страна изготовления" className={inputClass}
                   style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Метрологические характеристики *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Метрологические характеристики * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
                 <textarea name="metrologicalCharacteristics" value={formData.metrologicalCharacteristics} onChange={handleChange}
                   placeholder="Диапазон измерений, погрешность, класс точности и т.д."
-                  required rows={3}
+                  rows={3}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all bg-white resize-none"
                   style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
@@ -302,21 +355,25 @@ export default function CreateOrder() {
             </p>
             <div className="flex flex-col gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Доверенность *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Доверенность * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
                 <input type="file" accept=".pdf,.jpg,.jpeg,.rar"
                   onChange={e => handleAttachmentChange(e, setPowerOfAttorney)}
                   className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
-                {powerOfAttorney && (
+                {powerOfAttorney ? (
                   <p className="text-xs text-green-600 mt-1" style={{ margin: '4px 0 0' }}>{powerOfAttorney.name}</p>
+                ) : existingPowerOfAttorneyName && (
+                  <p className="text-xs text-gray-500 mt-1" style={{ margin: '4px 0 0' }}>Уже прикреплено: {existingPowerOfAttorneyName}</p>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Документация на СИ *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Документация на СИ * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
                 <input type="file" accept=".pdf,.jpg,.jpeg,.rar"
                   onChange={e => handleAttachmentChange(e, setTechDocumentation)}
                   className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
-                {techDocumentation && (
+                {techDocumentation ? (
                   <p className="text-xs text-green-600 mt-1" style={{ margin: '4px 0 0' }}>{techDocumentation.name}</p>
+                ) : existingTechDocumentationName && (
+                  <p className="text-xs text-gray-500 mt-1" style={{ margin: '4px 0 0' }}>Уже прикреплено: {existingTechDocumentationName}</p>
                 )}
               </div>
             </div>
@@ -338,9 +395,9 @@ export default function CreateOrder() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Плановая дата сдачи *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Плановая дата сдачи * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
                 <input type="date" name="dueDate" value={formData.dueDate} onChange={handleChange}
-                  required min={new Date().toISOString().split('T')[0]} max="2099-12-31"
+                  min={new Date().toISOString().split('T')[0]} max="2099-12-31"
                   className={inputClass} style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
             </div>
@@ -362,11 +419,18 @@ export default function CreateOrder() {
             </div>
           </div>
 
-          <button type="submit"
-            className="w-full py-4 bg-[#00B2FF] hover:bg-[#0095D9] text-white font-semibold rounded-xl border-none cursor-pointer text-base transition-colors"
-            style={{ marginBottom: 0 }}>
-            Создать заявку
-          </button>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => handleSave(true)}
+              className="flex-1 py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl border-none cursor-pointer text-base transition-colors"
+              style={{ marginBottom: 0 }}>
+              Сохранить как черновик
+            </button>
+            <button type="button" onClick={() => handleSave(false)}
+              className="flex-1 py-4 bg-[#00B2FF] hover:bg-[#0095D9] text-white font-semibold rounded-xl border-none cursor-pointer text-base transition-colors"
+              style={{ marginBottom: 0 }}>
+              Отправить
+            </button>
+          </div>
         </form>
       </div>
     </div>

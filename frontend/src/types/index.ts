@@ -42,6 +42,7 @@ export interface Service {
 }
 
 export type OrderStatus =
+  | 'draft'
   | 'pending_contract'
   | 'revision'
   | 'awaiting_approval'

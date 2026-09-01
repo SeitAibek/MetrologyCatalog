@@ -52,6 +52,7 @@ export const orderApi = {
   getByLabId: (labId: number) => api.get(`/orders/lab/${labId}`),
   getByStatus: (status: string) => api.get(`/orders/status/${status}`),
   create: (data: any) => api.post('/orders', data),
+  saveDraft: (id: number, data: any) => api.put(`/orders/${id}/save-draft`, data),
   updateStatus: (id: number, status: string) => api.put(`/orders/${id}/status`, { status }),
   confirmPayment: (id: number, paid: boolean, comment?: string, price?: number | null) =>
     api.put(`/orders/${id}/payment`, { paid, comment, price }),

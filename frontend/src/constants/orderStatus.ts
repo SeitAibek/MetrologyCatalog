@@ -4,6 +4,7 @@ import type { OrderStatus } from '../types';
 // статус-карты (Orders.tsx, Queue.tsx, Reports.tsx). pending_delivery и
 // awaiting_delivery сюда не входят — см. TODO ниже.
 const BASE_STATUS_LABELS = {
+  draft:             'Черновик',
   pending_contract:  'Ожидает договора',
   revision:          'На доработке',
   awaiting_approval: 'На согласовании',
@@ -48,6 +49,7 @@ export const ORDER_STATUS_LABELS_REPORTS: Record<OrderStatus, string> = {
 // Основная палитра — Orders.tsx и Queue.tsx (их цвета совпадают дословно
 // по всем статусам, включая expertise после унификации на indigo).
 export const ORDER_STATUS_COLORS: Record<OrderStatus, { bg: string; text: string }> = {
+  draft:             { bg: 'bg-gray-50',    text: 'text-gray-400' },
   pending_contract:  { bg: 'bg-slate-100',  text: 'text-slate-600' },
   revision:          { bg: 'bg-orange-100', text: 'text-orange-700' },
   awaiting_approval: { bg: 'bg-blue-100',   text: 'text-blue-700' },
@@ -67,6 +69,7 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, { bg: string; text: string
 // Приглушённая палитра — Reports.tsx: осознанно единый нейтральный серый для
 // cancelled/annulled/terminated (не отвлекать цветом в табличном отчёте).
 export const ORDER_STATUS_COLORS_MUTED: Record<OrderStatus, { bg: string; text: string }> = {
+  draft:             { bg: 'bg-gray-50',    text: 'text-gray-400' },
   pending_contract:  { bg: 'bg-blue-100',   text: 'text-blue-700' },
   revision:          { bg: 'bg-red-100',    text: 'text-red-700' },
   awaiting_approval: { bg: 'bg-indigo-100', text: 'text-indigo-700' },

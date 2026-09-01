@@ -778,8 +778,18 @@ ROLE_SIGN_LABELS = {
 }
 
 
-def _sign_role(request, order_id, role, extra_check=None, check_pending_approval=True,
-                before_save=None, after_save=None):
+def _require_pending_approval(contract):
+    # Единственный статус, из которого достижимо и подписание, и отклонение —
+    # см. обоснование в истории Б2: pending_approval держится весь период
+    # согласования, отклонённый/подписанный/ещё не поданный договор сюда не входит.
+    if contract.status != "pending_approval":
+        return "Договор не на согласовании"
+    if not contract.contract_file:
+        return "Менеджер ещё не загрузил файл договора"
+    return None
+
+
+def _sign_role(request, order_id, role, extra_check=None, before_save=None, after_save=None):
     """
     extra_check(contract) -> str | None — доп. условие допуска к подписи сверх
     общих (нужно client/gen_director: допуск зависит от того, подписали ли уже
@@ -790,16 +800,13 @@ def _sign_role(request, order_id, role, extra_check=None, check_pending_approval
     after_save(request, order_id, contract) — что сделать после сохранения; по
     умолчанию — уведомление клиента при завершении тройки (поведение approver/
     financier/director).
-    check_pending_approval — временно False для client/gen_director (Шаг 2:
-    чистый рефакторинг без исправления Б2); станет обязательным для всех на Шаге 3.
     """
     contract, err = _get_contract_or_404(order_id)
     if err:
         return err
-    if check_pending_approval and contract.status != "pending_approval":
-        return Response({"message": "Договор не на согласовании"}, status=400)
-    if check_pending_approval and not contract.contract_file:
-        return Response({"message": "Менеджер ещё не загрузил файл договора"}, status=400)
+    guard_message = _require_pending_approval(contract)
+    if guard_message:
+        return Response({"message": guard_message}, status=400)
     if extra_check:
         extra_message = extra_check(contract)
         if extra_message:
@@ -865,7 +872,6 @@ def sign_by_client(request, order_id):
     return _sign_role(
         request, order_id, "client",
         extra_check=_client_sign_precondition,
-        check_pending_approval=False,
         after_save=_notify_gen_director_after_client_signs,
     )
 
@@ -897,7 +903,6 @@ def sign_by_gen_director(request, order_id):
     return _sign_role(
         request, order_id, "gen_director",
         extra_check=_gen_director_sign_precondition,
-        check_pending_approval=False,
         before_save=_finalize_signed_contract,
         after_save=_advance_order_after_gen_director_signs,
     )
@@ -909,9 +914,15 @@ def reject_contract(request, order_id):
     contract, err = _get_contract_or_404(order_id)
     if err:
         return err
+    guard_message = _require_pending_approval(contract)
+    if guard_message:
+        return Response({"message": guard_message}, status=400)
 
     reason = request.data.get("reason")
 
+    # Сброс — до присвоения новых значений: reset_approval_state() сам обнуляет
+    # rejected_by_role/rejected_reason, иначе он же сотрёт то, что ставим ниже.
+    contract.reset_approval_state()
     contract.status = "rejected"
     contract.rejected_by_role = request.user.role
     contract.rejected_reason = reason

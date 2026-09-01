@@ -1,5 +1,6 @@
 import time
 import base64
+import binascii
 from django.db.models import Sum
 from django.db import transaction
 from django.http import HttpResponse
@@ -60,6 +61,15 @@ def _require_role(request, *allowed_roles):
     if request.user.role not in allowed_roles:
         return Response({"message": "Доступ запрещён"}, status=403)
     return None
+
+
+def _decode_base64_or_error(data, label="Файл"):
+    # Битый base64 (например, оборванная загрузка) иначе валит decode необработанным
+    # исключением (500) вместо понятного ответа клиенту.
+    try:
+        return base64.b64decode(data), None
+    except (binascii.Error, ValueError):
+        return None, Response({"message": f"{label}: повреждённые данные, ожидался валидный base64"}, status=400)
 
 
 @api_view(["GET"])
@@ -153,6 +163,14 @@ def orders_list(request):
         return Response({"message": "Дата сдачи обязательна"}, status=400)
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
+    if power_of_attorney_file:
+        _, decode_err = _decode_base64_or_error(power_of_attorney_file, "Доверенность")
+        if decode_err:
+            return decode_err
+    if tech_documentation_file:
+        _, decode_err = _decode_base64_or_error(tech_documentation_file, "Документация на СИ")
+        if decode_err:
+            return decode_err
 
     items_error = _validate_order_items(order_items)
     if items_error:
@@ -229,6 +247,12 @@ def order_detail(request, id):
     if err:
         return err
 
+    if order.status not in ("pending_contract", "revision"):
+        return Response(
+            {"message": "Редактировать можно только заявку в статусе 'pending_contract' или 'revision'"},
+            status=400,
+        )
+
     service_id = request.data.get("service_id")
     lab_id = request.data.get("lab_id")
     due_date = request.data.get("due_date")
@@ -265,6 +289,8 @@ def update_order_status(request, id):
 
     if request.user.role == "metrolog" and order.metrologist_id != request.user.id:
         return Response({"message": "Заявка не назначена вам"}, status=403)
+    if request.user.role == "client" and order.client_id != request.user.id:
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
 
     order.status = new_status
     order.save()
@@ -400,6 +426,9 @@ def upload_receipt(request, id):
         return Response({"message": "Имя файла обязательно"}, status=400)
     if len(file_data) > 7_000_000:
         return Response({"message": "Файл слишком большой. Максимум 5MB"}, status=400)
+    _, decode_err = _decode_base64_or_error(file_data, "Файл чека")
+    if decode_err:
+        return decode_err
 
     order.payment_receipt = file_data
     order.payment_receipt_name = file_name
@@ -471,7 +500,11 @@ def confirm_payment(request, id):
     if err:
         return err
 
-    order.status = "pending_delivery"
+    if order.status != "awaiting_payment":
+        return Response(
+            {"message": "Подтвердить оплату можно только для заявки в статусе 'awaiting_payment'"},
+            status=400,
+        )
 
     comment = request.data.get("comment")
     if comment is not None:
@@ -479,8 +512,15 @@ def confirm_payment(request, id):
 
     price = request.data.get("price")
     if price is not None:
+        try:
+            price_is_valid = 0 < float(price) <= 99_999_999.99
+        except (TypeError, ValueError):
+            price_is_valid = False
+        if not price_is_valid:
+            return Response({"message": "Цена должна быть больше 0 и не превышать 99 999 999.99"}, status=400)
         order.price = price
 
+    order.status = "pending_delivery"
     order.save()
 
     notification_services.notify_manager_payment_confirmed(order.id, order.order_number)
@@ -582,6 +622,12 @@ def submit_expertise(request, id):
         return Response({"message": "Экспертное заключение обязательно"}, status=400)
     if len(test_program_file) > 10_000_000 or len(type_description_file) > 10_000_000:
         return Response({"message": "Файл слишком большой. Максимум 10MB"}, status=400)
+    _, decode_err = _decode_base64_or_error(test_program_file, "Проект программы испытаний")
+    if decode_err:
+        return decode_err
+    _, decode_err = _decode_base64_or_error(type_description_file, "Проект описания типа")
+    if decode_err:
+        return decode_err
 
     order.test_program_draft_file = test_program_file
     order.test_program_draft_file_name = test_program_file_name
@@ -619,6 +665,9 @@ def contract_detail(request, order_id):
         return Response({"message": "Имя файла обязательно"}, status=400)
     if len(file_data) > 10_000_000:
         return Response({"message": "Файл слишком большой. Максимум 7MB"}, status=400)
+    _, decode_err = _decode_base64_or_error(file_data, "Файл договора")
+    if decode_err:
+        return decode_err
 
     contract, _ = Contract.objects.get_or_create(
         order_id=order_id,
@@ -651,7 +700,9 @@ def download_contract_file(request, order_id):
     if not contract.contract_file:
         return Response({"message": "Файл договора ещё не загружен"}, status=404)
 
-    file_bytes = base64.b64decode(contract.contract_file)
+    file_bytes, decode_err = _decode_base64_or_error(contract.contract_file, "Файл договора")
+    if decode_err:
+        return decode_err
     file_name = contract.contract_file_name or f"contract_{order_id}.pdf"
     content_type = "application/pdf" if file_name.endswith(".pdf") else "application/octet-stream"
 
@@ -860,7 +911,9 @@ def download_contract(request, order_id):
         return Response({"message": "Договор не найден"}, status=404)
 
     if contract.contract_file:
-        file_bytes = base64.b64decode(contract.contract_file)
+        file_bytes, decode_err = _decode_base64_or_error(contract.contract_file, "Файл договора")
+        if decode_err:
+            return decode_err
         file_name = contract.contract_file_name or f"contract_{order_id}.pdf"
         response = HttpResponse(file_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{file_name}"'

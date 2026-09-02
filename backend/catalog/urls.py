@@ -6,4 +6,5 @@ urlpatterns = [
     path("<int:id>/", views.get_service_by_id, name="service-detail"),
     path("type/<str:measurement_type>/", views.get_by_measurement_type, name="services-by-type"),
     path("lab/<int:lab_id>/", views.get_by_lab_id, name="services-by-lab"),
+    path("<int:id>/template/", views.update_service_template, name="service-update-template"),
 ]

@@ -10,4 +10,5 @@ class ServiceSerializer(serializers.ModelSerializer):
         fields = [
             "id", "name", "description", "measurement_type",
             "price", "duration_days", "lab_id", "lab_name", "is_active", "standard",
+            "custom_fields_schema",
         ]

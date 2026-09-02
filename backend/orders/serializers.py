@@ -9,6 +9,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "id", "order_id", "device_type", "model", "serial_number", "quantity",
             "manufacturer_name", "manufacturer_address", "manufacturer_country",
             "metrological_characteristics",
+            "custom_fields_schema", "custom_fields_values",
         ]
 
 
@@ -23,6 +24,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "power_of_attorney_file_name", "tech_documentation_file_name",
             "test_program_draft_file_name", "type_description_draft_file_name",
             "expertise_conclusion",
+            "custom_fields_schema", "custom_fields_values",
         ]
 
 

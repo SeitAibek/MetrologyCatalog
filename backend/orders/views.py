@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from users.models import User
 from users.permissions import has_role
 from laboratories.models import Laboratory
+from catalog.models import Service
 from .models import Result, Order, OrderItem, Contract
 from .serializers import OrderSerializer, OrderItemSerializer, ContractSerializer, ResultSerializer
 from . import email_utils, pdf_service
@@ -31,7 +32,10 @@ def _get_contract_or_404(order_id):
         return None, Response({"message": "Договор не найден"}, status=404)
 
 
-def _create_order_items(order, items):
+def _create_order_items(order, items, item_schema):
+    # item_schema — срез схемы услуги с scope="item" на момент записи, а не
+    # текущая схема услуги: старые позиции должны отображаться так же, как
+    # были заполнены, даже если менеджер потом изменит шаблон.
     for item in items:
         OrderItem.objects.create(
             order=order,
@@ -39,10 +43,8 @@ def _create_order_items(order, items):
             model=item.get("model"),
             serial_number=item.get("serial_number"),
             quantity=item.get("quantity"),
-            manufacturer_name=item.get("manufacturer_name"),
-            manufacturer_address=item.get("manufacturer_address"),
-            manufacturer_country=item.get("manufacturer_country"),
-            metrological_characteristics=item.get("metrological_characteristics"),
+            custom_fields_schema=item_schema,
+            custom_fields_values=item.get("custom_fields_values") or {},
         )
 
 
@@ -54,6 +56,34 @@ def _validate_order_items(items):
             return Response({"message": "Серийный номер обязателен"}, status=400)
         if not item.get("quantity") or item.get("quantity") <= 0:
             return Response({"message": "Количество должно быть больше 0"}, status=400)
+    return None
+
+
+def _validate_custom_fields(schema, order_values, items_values):
+    # Идём от схемы, а не от values — лишние ключи в values, которых нет в
+    # схеме (например, оставшиеся от прежнего шаблона услуги), не валят
+    # запрос и сохраняются как есть, без фильтрации.
+    # Проверяется только required в этой версии — тип значения (число, дата
+    # и т.п.) не валидируется, это отдельный будущий слой.
+    def is_empty(value):
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return not value.strip()
+        return False
+
+    for field in schema:
+        if not field.get("required"):
+            continue
+        label = field.get("label", field.get("key"))
+        if field.get("scope") == "order":
+            if is_empty((order_values or {}).get(field["key"])):
+                return Response({"message": f"Заполните поле «{label}»"}, status=400)
+        else:
+            for values in items_values:
+                if is_empty((values or {}).get(field["key"])):
+                    return Response({"message": f"Заполните поле «{label}»"}, status=400)
+
     return None
 
 
@@ -212,6 +242,22 @@ def orders_list(request):
     if items_error:
         return items_error
 
+    schema = getattr(Service.objects.filter(id=service_id).first(), "custom_fields_schema", None) or []
+    order_custom_fields_values = request.data.get("custom_fields_values") or {}
+
+    # Черновик по определению может быть неполным — как и с датой сдачи выше,
+    # кастомные поля обязательны только при реальной подаче.
+    if not is_draft:
+        validation_error = _validate_custom_fields(
+            schema, order_custom_fields_values,
+            [item.get("custom_fields_values") or {} for item in order_items],
+        )
+        if validation_error:
+            return validation_error
+
+    order_schema = [f for f in schema if f.get("scope") == "order"]
+    item_schema = [f for f in schema if f.get("scope") == "item"]
+
     with transaction.atomic():
         order = Order.objects.create(
             order_number=f"ORD-{int(time.time() * 1000)}",
@@ -225,9 +271,11 @@ def orders_list(request):
             power_of_attorney_file_name=power_of_attorney_file_name,
             tech_documentation_file=tech_documentation_file,
             tech_documentation_file_name=tech_documentation_file_name,
+            custom_fields_schema=order_schema,
+            custom_fields_values=order_custom_fields_values,
         )
 
-        _create_order_items(order, order_items)
+        _create_order_items(order, order_items, item_schema)
 
         # Договор и уведомление менеджерам — только при реальной подаче.
         # Черновик ещё не подан, согласовывать и показывать менеджеру нечего.
@@ -275,6 +323,17 @@ def save_draft(request, id):
     if items_error:
         return items_error
 
+    schema = getattr(Service.objects.filter(id=service_id).first(), "custom_fields_schema", None) or []
+    order_custom_fields_values = request.data.get("custom_fields_values") or {}
+
+    if not is_draft:
+        validation_error = _validate_custom_fields(
+            schema, order_custom_fields_values,
+            [item.get("custom_fields_values") or {} for item in order_items],
+        )
+        if validation_error:
+            return validation_error
+
     # Ключ отсутствует в теле запроса = вложение не менялось (фронт не
     # перезаливает файл, который клиент не трогал) — обновляем только то, что
     # реально пришло, не затирая уже сохранённое.
@@ -297,13 +356,16 @@ def save_draft(request, id):
     order.lab_id = lab_id
     order.due_date = due_date or None
     order.client_comment = client_comment
+    order.custom_fields_values = order_custom_fields_values
+    order.custom_fields_schema = [f for f in schema if f.get("scope") == "order"]
     if not is_draft:
         order.status = "pending_contract"
 
     with transaction.atomic():
         order.save()
         OrderItem.objects.filter(order_id=id).delete()
-        _create_order_items(order, order_items)
+        item_schema = [f for f in schema if f.get("scope") == "item"]
+        _create_order_items(order, order_items, item_schema)
 
         # Черновик при создании не заводил Contract (см. orders_list POST) —
         # заводим его сейчас, в момент фактической подачи.
@@ -493,6 +555,23 @@ def resubmit_order(request, id):
     due_date = request.data.get("due_date")
     client_comment = request.data.get("client_comment")
 
+    # Услуга могла смениться в этом же запросе — схему берём по эффективной
+    # (новой, если пришла, иначе текущей) услуге заявки, не по старой.
+    effective_service_id = service_id if service_id is not None else order.service_id
+    schema = getattr(Service.objects.filter(id=effective_service_id).first(), "custom_fields_schema", None) or []
+
+    # Как и остальные поля ниже — трогаем только если ключ реально пришёл,
+    # иначе оставляем то, что уже сохранено на заявке.
+    order_custom_fields_values = (
+        request.data.get("custom_fields_values") if "custom_fields_values" in request.data
+        else order.custom_fields_values
+    )
+    items_custom_fields_values = [item.get("custom_fields_values") or {} for item in order_items]
+
+    validation_error = _validate_custom_fields(schema, order_custom_fields_values, items_custom_fields_values)
+    if validation_error:
+        return validation_error
+
     if service_id is not None:
         order.service_id = service_id
     if lab_id is not None:
@@ -501,13 +580,16 @@ def resubmit_order(request, id):
         order.due_date = due_date
     if client_comment is not None:
         order.client_comment = client_comment
+    order.custom_fields_values = order_custom_fields_values or {}
+    order.custom_fields_schema = [f for f in schema if f.get("scope") == "order"]
     order.manager_comment = None
     order.status = "pending_contract"
 
     with transaction.atomic():
         order.save()
         OrderItem.objects.filter(order_id=id).delete()
-        _create_order_items(order, order_items)
+        item_schema = [f for f in schema if f.get("scope") == "item"]
+        _create_order_items(order, order_items, item_schema)
 
     notification_services.notify_managers_resubmit(order.order_number)
 

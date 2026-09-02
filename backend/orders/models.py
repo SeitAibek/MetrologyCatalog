@@ -57,6 +57,12 @@ class Order(models.Model):
     type_description_draft_file_name = models.CharField(max_length=255, null=True, blank=True)
     expertise_conclusion = models.TextField(null=True, blank=True)
 
+    # Поля шаблона услуги с scope="order" (общие для заявки, а не для
+    # конкретного прибора) — сегодня ни у одной услуги таких нет, задел на
+    # будущее, симметричный custom_fields_* на OrderItem.
+    custom_fields_schema = models.JSONField(default=list, blank=True)
+    custom_fields_values = models.JSONField(default=dict, blank=True)
+
     class Meta:
         db_table = "orders"
 
@@ -70,12 +76,20 @@ class OrderItem(models.Model):
     serial_number = models.CharField(max_length=255)
     quantity = models.IntegerField()
 
-    # Данные производителя СИ и метрологические характеристики — поля формы
-    # Казстандарта; nullable, т.к. существующие заявки создавались без них.
+    # Устарело — заменено на custom_fields_schema/custom_fields_values ниже.
+    # Колонки остаются nullable для уже существующих строк, но больше не
+    # заполняются новыми заявками.
     manufacturer_name = models.CharField(max_length=255, null=True, blank=True)
     manufacturer_address = models.CharField(max_length=255, null=True, blank=True)
     manufacturer_country = models.CharField(max_length=255, null=True, blank=True)
     metrological_characteristics = models.TextField(null=True, blank=True)
+
+    # Поля, специфичные для услуги (шаблон в Service.custom_fields_schema).
+    # schema — снимок шаблона на момент записи позиции, не текущий шаблон
+    # услуги: старые заявки должны отображаться так же, как были заполнены,
+    # даже если менеджер потом изменил шаблон.
+    custom_fields_schema = models.JSONField(default=list, blank=True)
+    custom_fields_values = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = "order_items"

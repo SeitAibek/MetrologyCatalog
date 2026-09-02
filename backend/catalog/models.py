@@ -10,6 +10,12 @@ class Service(models.Model):
     is_active = models.BooleanField(default=True)
     standard = models.CharField(max_length=255, null=True, blank=True)
 
+    # Список полей формы заявки, специфичных для этой услуги (сверх общих
+    # device_type/model/serial_number/quantity) — задаётся менеджером через
+    # экран шаблонов, а не миграцией. Элемент: {key, label, type, required,
+    # scope: "item"|"order", options?}.
+    custom_fields_schema = models.JSONField(default=list, blank=True)
+
     class Meta:
         db_table = "services"
 

@@ -173,7 +173,10 @@ export default function Orders() {
       setError('Поддерживаются только PDF и Word документы');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
+    // Порог считаем от сырого файла, а сервер — от base64-строки (она больше
+    // примерно в 4/3 раза): 7MB сырых дают ~9.3MB base64, укладывается в
+    // серверный лимит contract_detail (10MB base64) с запасом.
+    if (file.size > 7 * 1024 * 1024) {
       setError('Файл слишком большой. Максимум 7MB');
       return;
     }

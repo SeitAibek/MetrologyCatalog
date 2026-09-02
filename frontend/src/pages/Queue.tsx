@@ -119,8 +119,11 @@ export default function Queue() {
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setError('Файл слишком большой. Максимум 10MB');
+    // Порог считаем от сырого файла, а сервер (submit_expertise) — от
+    // base64-строки (больше примерно в 4/3 раза): 7MB сырых дают ~9.3MB
+    // base64, укладывается в серверный лимит (10MB base64) с запасом.
+    if (file.size > 7 * 1024 * 1024) {
+      setError('Файл слишком большой. Максимум 7MB');
       return;
     }
     const data = await readFileAsBase64(file);

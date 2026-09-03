@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { orderApi, contractApi, serviceApi, pdfApi, messageApi } from '../services/api';
 import api from '../services/api';
-import type { Order, Service, OrderItem, Message, OrderStatus, CustomFieldValues } from '../types';
+import type { Order, Service, OrderItem, Message, OrderStatus, CustomFieldValues, Contract } from '../types';
 import { downloadCertificate } from '../utils/download';
 import CustomFieldsForm from '../components/CustomFieldsForm';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../constants/orderStatus';
@@ -67,27 +67,30 @@ export default function Orders() {
   const statusColors = ORDER_STATUS_COLORS;
 
   useEffect(() => {
-    if (orders.length === 0) return;
-    orders.forEach(order => {
-      contractApi.getByOrderId(order.id)
-        .then(res => {
-          setContractData(prev => ({
-            ...prev,
-            [order.id]: {
-              clientSigned: res.data.clientSigned,
-              directorSigned: res.data.directorSigned,
-              approverSigned: res.data.approverSigned,
-              financierSigned: res.data.financierSigned,
-              genDirectorSigned: res.data.genDirectorSigned,
-              contractFileName: res.data.contractFileName,
-              registrationNumber: res.data.registrationNumber,
-              status: res.data.status,
-              downloaded: prev[order.id]?.downloaded || false,
-            }
-          }));
-        })
-        .catch(() => {});
-    });
+    // Черновик договора не имеет по определению — за ним не ходим.
+    const ids = orders.filter(o => o.status !== 'draft').map(o => o.id);
+    if (ids.length === 0) return;
+    contractApi.getManyByOrderIds(ids)
+      .then(res => {
+        setContractData(prev => {
+          const next = { ...prev };
+          for (const [orderId, c] of Object.entries(res.data as Record<string, Contract>)) {
+            next[Number(orderId)] = {
+              clientSigned: c.clientSigned,
+              directorSigned: c.directorSigned,
+              approverSigned: c.approverSigned,
+              financierSigned: c.financierSigned,
+              genDirectorSigned: c.genDirectorSigned,
+              contractFileName: c.contractFileName,
+              registrationNumber: c.registrationNumber,
+              status: c.status,
+              downloaded: prev[Number(orderId)]?.downloaded || false,
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
   }, [orders]);
 
   const fetchOrders = async () => {

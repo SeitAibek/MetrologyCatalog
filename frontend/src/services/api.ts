@@ -120,6 +120,10 @@ export const pdfApi = {
 
 export const contractApi = {
   getByOrderId: (orderId: number) => api.get(`/contracts/${orderId}`),
+  // Договоры пачкой: один запрос на всю страницу вместо одного на заявку.
+  // Ответ — словарь orderId -> договор; заявки без договора просто отсутствуют.
+  getManyByOrderIds: (orderIds: number[]) =>
+    api.get('/contracts', { params: { orderIds: orderIds.join(',') } }),
   uploadContract: (orderId: number, fileData: string, fileName: string) =>
     api.post(`/contracts/${orderId}`, { fileData, fileName }),
   submit: (orderId: number) => api.put(`/contracts/${orderId}/submit`),

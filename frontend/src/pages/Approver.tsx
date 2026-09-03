@@ -24,12 +24,12 @@ export default function Approver() {
       setOrders(res.data);
       // Загружаем статусы договоров для отображения прогресса подписей
       const contractMap: Record<number, Contract> = {};
-      await Promise.all(res.data.map(async (order: Order) => {
-        try {
-          const c = await contractApi.getByOrderId(order.id);
-          contractMap[order.id] = c.data;
-        } catch {}
-      }));
+      if (res.data.length > 0) {
+        const resC = await contractApi.getManyByOrderIds(res.data.map((o: Order) => o.id));
+        for (const [orderId, contract] of Object.entries(resC.data as Record<string, Contract>)) {
+          contractMap[Number(orderId)] = contract;
+        }
+      }
       setContracts(contractMap);
     } catch {
       setError('Ошибка при загрузке заявок');

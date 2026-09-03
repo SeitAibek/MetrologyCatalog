@@ -43,13 +43,12 @@ export default function GenDirector() {
       // Загружаем договоры и фильтруем: только те где тройка + клиент подписали
       const allOrders: Order[] = approvalRes.data;
       const contractMap: Record<number, Contract> = {};
-
-      await Promise.all(allOrders.map(async (order) => {
-        try {
-          const c = await contractApi.getByOrderId(order.id);
-          contractMap[order.id] = c.data;
-        } catch {}
-      }));
+      if (allOrders.length > 0) {
+        const resC = await contractApi.getManyByOrderIds(allOrders.map((o: Order) => o.id));
+        for (const [orderId, contract] of Object.entries(resC.data as Record<string, Contract>)) {
+          contractMap[Number(orderId)] = contract;
+        }
+      }
 
       setContracts(contractMap);
 

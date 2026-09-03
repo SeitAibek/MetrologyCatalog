@@ -397,6 +397,12 @@ def get_my_orders(request):
 @permission_classes([has_role("manager", "metrolog")])
 def get_orders_by_lab_id(request, lab_id):
     orders = Order.objects.filter(assigned_lab_id=lab_id).exclude(status="draft")
+    # Личное назначение метролога действует и здесь: lab_id приходит из URL, и
+    # без этого фильтра метролог получил бы по нему все заявки лаборатории,
+    # включая назначенные другим — в обход правила, которое соблюдают
+    # orders_list GET и _check_order_read_access.
+    if request.user.role == "metrolog":
+        orders = orders.filter(metrologist_id=request.user.id)
     return Response(OrderSerializer(orders, many=True).data)
 
 

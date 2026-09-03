@@ -144,10 +144,17 @@ def _apply_if_present(request, obj, field):
 # а вид документа (скан), поэтому в списке расширений его нет.
 ALLOWED_ATTACHMENT_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".rar")
 
-# Предел длины base64-строки. Тот же порядок, что у договора и черновиков
-# экспертизы; фактический потолок сегодня ниже — тело запроса режет сам Django
-# (DATA_UPLOAD_MAX_MEMORY_SIZE, 2.5 МБ по умолчанию, в settings не переопределён).
-MAX_ATTACHMENT_BASE64_LEN = 10_000_000
+# Лимиты задаются в мегабайтах САМОГО ФАЙЛА — то, что пользователь видит у себя
+# в проводнике, — а порог для base64-строки считается из них. Раньше число в
+# тексте ошибки жило отдельно от числа в проверке и разъезжалось с ним.
+# Фактический потолок сегодня ниже обоих: тело запроса режет сам Django
+# (DATA_UPLOAD_MAX_MEMORY_SIZE, 2.5 МиБ по умолчанию, в settings не задан).
+MAX_ATTACHMENT_MB = 7
+MAX_RECEIPT_MB = 5
+
+
+def _base64_len_for_mb(mb):
+    return int(mb * 1024 * 1024 * 4 / 3)
 
 # Расширения мало: имя задаёт загружающий. Сигнатура — то немногое, что можно
 # проверить в содержимом без сторонних библиотек, и она отсекает случай "HTML
@@ -158,6 +165,16 @@ ATTACHMENT_SIGNATURES = {
     ".jpeg": (b"\xff\xd8\xff",),
     ".rar": (b"Rar!\x1a\x07",),
 }
+
+
+def _validate_attachment(file_data, file_name, label="Файл", max_mb=MAX_ATTACHMENT_MB):
+    """Размер и формат одного вложения. Возвращает Response при отказе, иначе None."""
+    if len(file_data or "") > _base64_len_for_mb(max_mb):
+        return Response(
+            {"message": f"{label}: файл слишком большой. Максимум {max_mb} МБ"},
+            status=400,
+        )
+    return _validate_attachment_format(file_data, file_name, label)
 
 
 def _validate_attachment_format(file_data, file_name, label="Файл"):
@@ -302,17 +319,13 @@ def orders_list(request):
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
     if power_of_attorney_file:
-        if len(power_of_attorney_file) > MAX_ATTACHMENT_BASE64_LEN:
-            return Response({"message": "Доверенность: файл слишком большой"}, status=400)
-        format_err = _validate_attachment_format(power_of_attorney_file, power_of_attorney_file_name, "Доверенность")
-        if format_err:
-            return format_err
+        err = _validate_attachment(power_of_attorney_file, power_of_attorney_file_name, "Доверенность")
+        if err:
+            return err
     if tech_documentation_file:
-        if len(tech_documentation_file) > MAX_ATTACHMENT_BASE64_LEN:
-            return Response({"message": "Документация на СИ: файл слишком большой"}, status=400)
-        format_err = _validate_attachment_format(tech_documentation_file, tech_documentation_file_name, "Документация на СИ")
-        if format_err:
-            return format_err
+        err = _validate_attachment(tech_documentation_file, tech_documentation_file_name, "Документация на СИ")
+        if err:
+            return err
 
     items_error = _validate_order_items(order_items)
     if items_error:
@@ -426,19 +439,15 @@ def save_draft(request, id):
         _apply_if_present(request, order, field)
 
     if request.data.get("power_of_attorney_file"):
-        if len(order.power_of_attorney_file or "") > MAX_ATTACHMENT_BASE64_LEN:
-            return Response({"message": "Доверенность: файл слишком большой"}, status=400)
-        format_err = _validate_attachment_format(
+        err = _validate_attachment(
             order.power_of_attorney_file, order.power_of_attorney_file_name, "Доверенность")
-        if format_err:
-            return format_err
+        if err:
+            return err
     if request.data.get("tech_documentation_file"):
-        if len(order.tech_documentation_file or "") > MAX_ATTACHMENT_BASE64_LEN:
-            return Response({"message": "Документация на СИ: файл слишком большой"}, status=400)
-        format_err = _validate_attachment_format(
+        err = _validate_attachment(
             order.tech_documentation_file, order.tech_documentation_file_name, "Документация на СИ")
-        if format_err:
-            return format_err
+        if err:
+            return err
 
     order.service_id = service_id
     order.lab_id = lab_id
@@ -767,11 +776,9 @@ def upload_receipt(request, id):
         return Response({"message": "Файл чека обязателен"}, status=400)
     if not file_name:
         return Response({"message": "Имя файла обязательно"}, status=400)
-    if len(file_data) > 7_000_000:
-        return Response({"message": "Файл слишком большой. Максимум 5MB"}, status=400)
-    format_err = _validate_attachment_format(file_data, file_name, "Файл чека")
-    if format_err:
-        return format_err
+    err = _validate_attachment(file_data, file_name, "Файл чека", max_mb=MAX_RECEIPT_MB)
+    if err:
+        return err
 
     order.payment_receipt = file_data
     order.payment_receipt_name = file_name
@@ -965,14 +972,12 @@ def submit_expertise(request, id):
         return Response({"message": "Проект описания типа обязателен"}, status=400)
     if not conclusion:
         return Response({"message": "Экспертное заключение обязательно"}, status=400)
-    if len(test_program_file) > 10_000_000 or len(type_description_file) > 10_000_000:
-        return Response({"message": "Файл слишком большой. Максимум 10MB"}, status=400)
-    format_err = _validate_attachment_format(test_program_file, test_program_file_name, "Проект программы испытаний")
-    if format_err:
-        return format_err
-    format_err = _validate_attachment_format(type_description_file, type_description_file_name, "Проект описания типа")
-    if format_err:
-        return format_err
+    err = _validate_attachment(test_program_file, test_program_file_name, "Проект программы испытаний")
+    if err:
+        return err
+    err = _validate_attachment(type_description_file, type_description_file_name, "Проект описания типа")
+    if err:
+        return err
 
     order.test_program_draft_file = test_program_file
     order.test_program_draft_file_name = test_program_file_name
@@ -1021,11 +1026,9 @@ def contract_detail(request, order_id):
         return Response({"message": "Файл договора обязателен"}, status=400)
     if not file_name:
         return Response({"message": "Имя файла обязательно"}, status=400)
-    if len(file_data) > 10_000_000:
-        return Response({"message": "Файл слишком большой. Максимум 7MB"}, status=400)
-    format_err = _validate_attachment_format(file_data, file_name, "Файл договора")
-    if format_err:
-        return format_err
+    err = _validate_attachment(file_data, file_name, "Файл договора")
+    if err:
+        return err
 
     contract, _ = Contract.objects.get_or_create(
         order_id=order_id,

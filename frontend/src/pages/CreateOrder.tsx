@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api, { serviceApi, orderApi, userApi } from '../services/api';
 import CustomFieldsForm from '../components/CustomFieldsForm';
-import { ATTACHMENT_ACCEPT } from '../constants/attachments';
+import { ATTACHMENT_ACCEPT, MAX_PAIRED_ATTACHMENT_MB, validateAttachment } from '../constants/attachments';
 import type { Service, User, CustomFieldValues } from '../types';
 
 export default function CreateOrder() {
@@ -100,8 +100,10 @@ export default function CreateOrder() {
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setError('Файл слишком большой. Максимум 10MB');
+    // Доверенность и документация уходят в ОДНОМ запросе, поэтому парный предел.
+    const problem = validateAttachment(file, MAX_PAIRED_ATTACHMENT_MB);
+    if (problem) {
+      setError(problem);
       return;
     }
     const data = await readFileAsBase64(file);

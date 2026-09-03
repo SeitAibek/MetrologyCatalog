@@ -7,7 +7,7 @@ import type { Order, Service, OrderItem, Message, OrderStatus, CustomFieldValues
 import { downloadCertificate } from '../utils/download';
 import CustomFieldsForm from '../components/CustomFieldsForm';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../constants/orderStatus';
-import { ATTACHMENT_ACCEPT, ATTACHMENT_FORMATS_LABEL, hasAllowedAttachmentExtension } from '../constants/attachments';
+import { ATTACHMENT_ACCEPT, validateAttachment } from '../constants/attachments';
 
 export default function Orders() {
   const navigate = useNavigate();
@@ -169,15 +169,9 @@ export default function Orders() {
 
   // ─── Договорные действия ─────────────────────────────────────────────
   const handleUploadContract = async (order: Order, file: File) => {
-    if (!hasAllowedAttachmentExtension(file.name)) {
-      setError(`Поддерживаются только ${ATTACHMENT_FORMATS_LABEL}`);
-      return;
-    }
-    // Порог считаем от сырого файла, а сервер — от base64-строки (она больше
-    // примерно в 4/3 раза): 7MB сырых дают ~9.3MB base64, укладывается в
-    // серверный лимит contract_detail (10MB base64) с запасом.
-    if (file.size > 7 * 1024 * 1024) {
-      setError('Файл слишком большой. Максимум 7MB');
+    const problem = validateAttachment(file);
+    if (problem) {
+      setError(problem);
       return;
     }
     try {
@@ -399,12 +393,9 @@ export default function Orders() {
 
   // ─── Клиент: загрузить чек об оплате ───────────────────────
   const handleUploadReceipt = async (order: Order, file: File) => {
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Файл слишком большой. Максимум 5MB');
-      return;
-    }
-    if (!hasAllowedAttachmentExtension(file.name)) {
-      setError(`Поддерживаются только ${ATTACHMENT_FORMATS_LABEL}`);
+    const problem = validateAttachment(file);
+    if (problem) {
+      setError(problem);
       return;
     }
     try {

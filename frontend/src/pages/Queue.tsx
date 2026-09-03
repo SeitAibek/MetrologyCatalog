@@ -4,7 +4,7 @@ import api, { orderApi, messageApi } from '../services/api';
 import type { Order, Message } from '../types';
 import { downloadCertificate, downloadContract } from '../utils/download';
 import { ORDER_STATUS_LABELS_QUEUE, ORDER_STATUS_COLORS } from '../constants/orderStatus';
-import { ATTACHMENT_ACCEPT } from '../constants/attachments';
+import { ATTACHMENT_ACCEPT, MAX_PAIRED_ATTACHMENT_MB, validateAttachment } from '../constants/attachments';
 
 export default function Queue() {
   const { user } = useAuthStore();
@@ -120,11 +120,10 @@ export default function Queue() {
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Порог считаем от сырого файла, а сервер (submit_expertise) — от
-    // base64-строки (больше примерно в 4/3 раза): 7MB сырых дают ~9.3MB
-    // base64, укладывается в серверный лимит (10MB base64) с запасом.
-    if (file.size > 7 * 1024 * 1024) {
-      setError('Файл слишком большой. Максимум 7MB');
+    // Оба черновика уходят в одном запросе — парный предел.
+    const problem = validateAttachment(file, MAX_PAIRED_ATTACHMENT_MB);
+    if (problem) {
+      setError(problem);
       return;
     }
     const data = await readFileAsBase64(file);

@@ -18,6 +18,27 @@ from . import email_utils, pdf_service
 from notifications import services as notification_services
 
 
+# Колонки с содержимым файлов (base64). В списках они не нужны — сериализатор
+# отдаёт только имена, — но весят на порядок больше всех остальных полей вместе
+# взятых: при лимите 7 МБ на вложение одна строка тянет до ~28 МБ.
+# defer, а не only: only перечисляет то, ЧТО грузить, и стоит забыть одно поле
+# из двадцати в OrderSerializer — получим отложенную загрузку и лишний запрос на
+# каждую строку. defer перечисляет то, что грузить НЕ надо, и новые обычные поля
+# останутся быстрыми сами собой.
+ATTACHMENT_CONTENT_FIELDS = (
+    "power_of_attorney_file",
+    "tech_documentation_file",
+    "payment_receipt",
+    "test_program_draft_file",
+    "type_description_draft_file",
+)
+
+
+def _orders_for_list():
+    """Базовый queryset для любого спискового ответа по заказам."""
+    return Order.objects.defer(*ATTACHMENT_CONTENT_FIELDS)
+
+
 def _get_order_or_404(order_id, message="Заказ не найден"):
     try:
         return Order.objects.get(id=order_id), None
@@ -283,16 +304,16 @@ def orders_list(request):
         if request.user.role == "metrolog":
             # Личное назначение — метролог видит только заявки, назначенные лично ему,
             # а не всю лабораторию (см. assign_to_lab).
-            orders = Order.objects.filter(metrologist_id=request.user.id).exclude(status="draft")
+            orders = _orders_for_list().filter(metrologist_id=request.user.id).exclude(status="draft")
         else:
             lab_id = request.query_params.get("labId")
             if lab_id:
-                orders = Order.objects.filter(assigned_lab_id=lab_id).exclude(status="draft")
+                orders = _orders_for_list().filter(assigned_lab_id=lab_id).exclude(status="draft")
             else:
                 # .exclude(status="draft"), а не полагаемся на то, что черновик и так
                 # никому не назначен — этот же список отдаётся Reports.tsx без
                 # дополнительной фильтрации по стадии.
-                orders = Order.objects.exclude(status="draft")
+                orders = _orders_for_list().exclude(status="draft")
         return Response(OrderSerializer(orders, many=True).data)
 
     err = _require_role(request, "client", "manager")
@@ -487,14 +508,14 @@ def get_my_orders(request):
         return Response({"message": "clientId обязателен"}, status=400)
     if str(client_id) != str(request.user.id):
         return Response({"message": "Заявка вам не принадлежит"}, status=403)
-    orders = Order.objects.filter(client_id=client_id)
+    orders = _orders_for_list().filter(client_id=client_id)
     return Response(OrderSerializer(orders, many=True).data)
 
 
 @api_view(["GET"])
 @permission_classes([has_role("manager", "metrolog")])
 def get_orders_by_lab_id(request, lab_id):
-    orders = Order.objects.filter(assigned_lab_id=lab_id).exclude(status="draft")
+    orders = _orders_for_list().filter(assigned_lab_id=lab_id).exclude(status="draft")
     # Личное назначение метролога действует и здесь: lab_id приходит из URL, и
     # без этого фильтра метролог получил бы по нему все заявки лаборатории,
     # включая назначенные другим — в обход правила, которое соблюдают
@@ -511,7 +532,7 @@ def get_orders_by_status(request, status):
     # штабные роли могли бы получить черновики всех клиентов одним GET-запросом.
     if status == "draft":
         return Response({"message": "Доступ запрещён"}, status=403)
-    orders = Order.objects.filter(status=status)
+    orders = _orders_for_list().filter(status=status)
     return Response(OrderSerializer(orders, many=True).data)
 
 

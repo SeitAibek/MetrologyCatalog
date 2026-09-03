@@ -313,6 +313,12 @@ export default function Header() {
                 </svg>
                 Отчёты
               </button>
+              <button onClick={() => navigateTo('/service-templates')} className={navItemClass('/service-templates')} style={navItemStyle('/service-templates')}>
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path d="M4 6h16M4 12h10M4 18h7"/>
+                </svg>
+                Шаблоны услуг
+              </button>
             </div>
           )}
 

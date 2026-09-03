@@ -21,6 +21,7 @@ import Financier from './pages/Financier';
 import GenDirector from './pages/GenDirector';
 import Approver from './pages/Approver';
 import Director from './pages/Director';
+import ServiceTemplates from './pages/ServiceTemplates';
 import './App.css';
 
 const NO_HEADER_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-password'];
@@ -46,6 +47,7 @@ function AppLayout() {
           <Route path="/queue" element={<ProtectedRoute requiredRoles={['metrolog']}><Queue /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute requiredRoles={['manager']}><Dashboard /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute requiredRoles={['manager']}><Reports /></ProtectedRoute>} />
+          <Route path="/service-templates" element={<ProtectedRoute requiredRoles={['manager']}><ServiceTemplates /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute requiredRoles={['admin']}><AdminUsers /></ProtectedRoute>} />
           <Route path="/financier" element={<ProtectedRoute requiredRoles={['financier']}><Financier /></ProtectedRoute>} />
           <Route path="/approver" element={<ProtectedRoute requiredRoles={['approver']}><Approver /></ProtectedRoute>} />

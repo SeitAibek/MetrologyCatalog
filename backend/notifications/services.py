@@ -71,17 +71,20 @@ def notify_payment_confirmed(order_id: int, order_number: str):
                    "payment_received")
 
 
-def notify_assigned_to_lab(client_id: int, order_id: int, order_number: str, lab_name: str):
+def notify_assigned_to_lab(client_id: int, order_id: int, order_number: str, lab_name: str,
+                           metrologist_id: int):
     create(client_id, order_id,
            f"Ваша заявка {order_number} направлена на исполнение в {lab_name}",
            "assigned_to_lab")
     client = User.objects.filter(id=client_id).first()
     if client and client.email:
         email_utils.send_assigned_to_lab(client.email, client.full_name, order_number, lab_name)
-    for metrolog in User.objects.filter(role="metrolog"):
-        create(metrolog.id, order_id,
-               f"Новая заявка {order_number} направлена в вашу лабораторию ({lab_name})",
-               "assigned_to_lab")
+    # Только назначенному: рассылка всем метрологам выдавала номер заявки тем,
+    # кому она недоступна ни через один эндпоинт (включая метрологов других
+    # лабораторий, которым текст про "вашу лабораторию" ещё и врал).
+    create(metrologist_id, order_id,
+           f"Вам назначена заявка {order_number} ({lab_name})",
+           "assigned_to_lab")
 
 
 def notify_client_status_changed(client_id: int, order_id: int, order_number: str, status_label: str):

@@ -878,7 +878,9 @@ def assign_to_lab(request, id):
     order.save()
 
     lab_name = lab.name + (f" ({lab.city})" if lab.city else "")
-    notification_services.notify_assigned_to_lab(order.client_id, order.id, order.order_number, lab_name)
+    notification_services.notify_assigned_to_lab(
+        order.client_id, order.id, order.order_number, lab_name, order.metrologist_id
+    )
 
     return Response(OrderSerializer(order).data)
 

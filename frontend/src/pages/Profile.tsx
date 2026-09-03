@@ -30,7 +30,7 @@ export default function Profile() {
 
   const fetchProfile = async () => {
     try {
-      const res = await userApi.getProfile(user!.id);
+      const res = await userApi.getProfile();
       if (res.data.company) {
         const c = res.data.company;
         setCompany(c);
@@ -65,7 +65,6 @@ export default function Profile() {
     try {
       setIsSaving(true);
       await userApi.updateProfile({
-        id: user?.id,
         fullName: formData.fullName,
         email: formData.email || null,
         phone: formData.phone || null,

@@ -161,7 +161,8 @@ export const laboratoryApi = {
 };
 
 export const userApi = {
-  getProfile: (userId: number) => api.get('/profile', { params: { userId } }),
+  // userId не передаётся: бэкенд берёт профиль владельца токена.
+  getProfile: () => api.get('/profile'),
   updateProfile: (data: any) => api.put('/profile', data),
   getClients: () => api.get('/users/clients'),
   getMetrologistsByLab: (labId: number) => api.get(`/users/metrologists/${labId}`),

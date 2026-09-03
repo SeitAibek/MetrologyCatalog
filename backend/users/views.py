@@ -180,16 +180,12 @@ def reset_password(request):
 
 @api_view(["GET", "PUT"])
 def profile(request):
+    # Чей это профиль — решает токен, а не userId в query и не id в теле:
+    # иначе любой авторизованный читает чужой профиль вместе с реквизитами
+    # компании и правит чужие ФИО/телефон/почту.
+    user = request.user
+
     if request.method == "GET":
-        user_id = request.query_params.get("userId")
-        if not user_id:
-            return Response({"message": "userId обязателен"}, status=400)
-
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response({"message": "Пользователь не найден"}, status=404)
-
         company_data = None
         if user.company_id:
             company = Company.objects.filter(id=user.company_id).first()
@@ -200,15 +196,6 @@ def profile(request):
             "user": UserSerializer(user).data,
             "company": company_data,
         })
-
-    user_id = request.data.get("id")
-    if not user_id:
-        return Response({"message": "ID пользователя не указан"}, status=400)
-
-    try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        return Response({"message": "Пользователь не найден"}, status=404)
 
     full_name = request.data.get("full_name")
     phone = request.data.get("phone")

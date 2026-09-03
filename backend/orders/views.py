@@ -50,14 +50,23 @@ def _blob_fields(model):
 ATTACHMENT_CONTENT_FIELDS = _blob_fields(Order)
 
 
+# Связи, из которых OrderSerializer берёт имена. select_related, а не отдельные
+# обращения: без него каждое имя стоило бы запроса на строку — тот самый N+1,
+# которого в SQL до сих пор не было. Contract сюда не входит намеренно: он
+# тянется пакетной ручкой и несёт свою base64-колонку.
+ORDER_NAME_RELATIONS = ("service", "lab", "client")
+
+
 def _orders_for_list():
     """Базовый queryset для любого спискового ответа по заказам."""
-    return Order.objects.defer(*ATTACHMENT_CONTENT_FIELDS)
+    return Order.objects.defer(*ATTACHMENT_CONTENT_FIELDS).select_related(*ORDER_NAME_RELATIONS)
 
 
 def _get_order_or_404(order_id, message="Заказ не найден"):
+    # Те же связи, что и в списках: одиночный ответ тоже сериализуется
+    # OrderSerializer, и без них каждое имя стоило бы отдельного запроса.
     try:
-        return Order.objects.get(id=order_id), None
+        return Order.objects.select_related(*ORDER_NAME_RELATIONS).get(id=order_id), None
     except Order.DoesNotExist:
         return None, Response({"message": message}, status=404)
 

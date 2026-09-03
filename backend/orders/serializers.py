@@ -12,10 +12,20 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
+    # Только имена — списки показывали "Лаборатория #2" и "Клиент ID: 1",
+    # потому что в ответе одни идентификаторы, а справочники страницы больше не
+    # грузят. Вложенных объектов не заводим: карточке нужна строка.
+    # Связи подтягиваются одним запросом (_orders_for_list, _get_order_or_404) —
+    # без select_related каждое из этих полей стоило бы запроса на строку.
+    service_name = serializers.CharField(source="service.name", read_only=True)
+    lab_name = serializers.CharField(source="lab.name", read_only=True)
+    client_name = serializers.CharField(source="client.full_name", read_only=True)
+
     class Meta:
         model = Order
         fields = [
             "id", "order_number", "client_id", "service_id", "lab_id", "assigned_lab_id",
+            "service_name", "lab_name", "client_name",
             "assigned_at", "status", "price", "due_date", "metrologist_id",
             "payment_comment", "client_comment", "manager_comment",
             "invoice_sent", "payment_receipt_name", "receipt_uploaded_at",

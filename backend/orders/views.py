@@ -605,8 +605,10 @@ def resubmit_order(request, id):
     if err:
         return err
 
+    # Посторонний не должен отличать "не твоя заявка" от "заявки нет":
+    # 403 подтверждал бы и существование чужой заявки, и её состояние.
     if order.client_id != request.user.id:
-        return Response({"message": "Заявка вам не принадлежит"}, status=403)
+        return Response({"message": "Заявка не найдена"}, status=404)
     if order.status != "revision":
         return Response(
             {"message": "Повторно отправить можно только заявку в статусе 'revision'"},
@@ -696,7 +698,7 @@ def upload_receipt(request, id):
         return err
 
     if order.client_id != request.user.id:
-        return Response({"message": "Заявка вам не принадлежит"}, status=403)
+        return Response({"message": "Заявка не найдена"}, status=404)
     if order.status != "awaiting_payment":
         return Response(
             {"message": "Чек можно загрузить только для заявки в статусе 'awaiting_payment'"},
@@ -1163,7 +1165,7 @@ def sign_by_client(request, order_id):
     if err:
         return err
     if order.client_id != request.user.id:
-        return Response({"message": "Заявка вам не принадлежит"}, status=403)
+        return Response({"message": "Заявка не найдена"}, status=404)
 
     return _sign_role(
         request, order_id, "client",

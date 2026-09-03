@@ -154,21 +154,24 @@ def get_stats(request):
 def create_result(request):
     order_id = request.data.get("order_id")
     result_type = request.data.get("result_type")
-    metrologist_id = request.data.get("metrologist_id")
 
-    if not Order.objects.filter(id=order_id).exists():
-        return Response({"message": "Заказ не найден"}, status=404)
-    if not metrologist_id or not User.objects.filter(id=metrologist_id).exists():
-        return Response({"message": "Метролог не найден"}, status=404)
+    order, err = _get_order_or_404(order_id)
+    if err:
+        return err
+    # Результат создаётся подписанным (is_signed=True), то есть это документ за
+    # подписью метролога: и автор, и право его выпустить берутся из токена и
+    # назначения, а не из metrologist_id в теле запроса.
+    if order.metrologist_id != request.user.id:
+        return Response({"message": "Заявка не назначена вам"}, status=403)
     if result_type not in Result.ResultType.values:
         return Response({"message": f"Недопустимый тип результата: {result_type}"}, status=400)
 
     now = timezone.now()
 
     Result.objects.create(
-        order_id=order_id,
+        order_id=order.id,
         result_type=result_type,
-        metrologist_id=metrologist_id,
+        metrologist_id=request.user.id,
         issued_at=now,
         is_signed=True,
         signed_at=now,

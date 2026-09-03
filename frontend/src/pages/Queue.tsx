@@ -166,7 +166,8 @@ export default function Queue() {
     if (!selectedOrderId || !user) return;
     try {
       setSubmitting(true);
-      await api.post('/results', { orderId: selectedOrderId, resultType, metrologistId: user.id });
+      // metrologistId не шлём: автора бэкенд берёт из токена.
+      await api.post('/results', { orderId: selectedOrderId, resultType });
       await orderApi.updateStatus(selectedOrderId, 'completed');
       setOrders(prev => prev.map(o => o.id === selectedOrderId ? { ...o, status: 'completed' as Order['status'] } : o));
       setShowModal(false);

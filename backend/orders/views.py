@@ -500,6 +500,27 @@ def order_detail(request, id):
 
 VALID_STATUSES = Order.Status.values
 
+# Что каждая из двух ролей вправе перевести и откуда. Роль и владение сами по
+# себе ничего не говорят о том, законен ли переход: без этой карты клиент
+# переводил свою заявку из draft сразу в completed, а метролог гонял
+# назначенную заявку в любую сторону, включая обратный ход из терминального
+# статуса. Набор снят с фронта: клиент отменяет заявку из трёх состояний
+# (Orders.tsx), метролог ведёт лабораторную цепочку (Queue.tsx statusFlow).
+# Переход expertise -> in_work сюда намеренно не входит: он делается через
+# submit_expertise, который дополнительно требует приложить документы.
+ALLOWED_STATUS_TRANSITIONS = {
+    "client": {
+        "pending_contract": {"cancelled"},
+        "revision": {"cancelled"},
+        "awaiting_payment": {"cancelled"},
+    },
+    "metrolog": {
+        "received_in_lab": {"expertise"},
+        "in_work": {"under_review"},
+        "under_review": {"completed"},
+    },
+}
+
 
 @api_view(["PUT"])
 @permission_classes([has_role("client", "metrolog")])
@@ -514,9 +535,16 @@ def update_order_status(request, id):
         return err
 
     if request.user.role == "metrolog" and order.metrologist_id != request.user.id:
-        return Response({"message": "Заявка не назначена вам"}, status=403)
+        return Response({"message": "Заявка не назначена вам"}, status=404)
     if request.user.role == "client" and order.client_id != request.user.id:
-        return Response({"message": "Заявка вам не принадлежит"}, status=403)
+        return Response({"message": "Заявка не найдена"}, status=404)
+
+    allowed = ALLOWED_STATUS_TRANSITIONS.get(request.user.role, {}).get(order.status, set())
+    if new_status not in allowed:
+        return Response(
+            {"message": f"Из статуса '{order.status}' этот переход недоступен"},
+            status=400,
+        )
 
     order.status = new_status
     order.save()

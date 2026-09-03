@@ -24,3 +24,11 @@ class JwtAuthentication(BaseAuthentication):
             raise AuthenticationFailed("User not found")
 
         return (user, token)
+
+    def authenticate_header(self, request):
+        # Без этого DRF в handle_exception подменяет 401 на 403 для
+        # NotAuthenticated/AuthenticationFailed (смотрит на
+        # get_authenticate_header(), а он без этого метода возвращает None).
+        # Из-за подмены "токен не прислан / протух" неотличимо от "роль не
+        # подходит", и фронт не может увести протухшую сессию на логин.
+        return "Bearer"

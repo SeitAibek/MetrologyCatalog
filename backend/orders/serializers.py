@@ -7,8 +7,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
         model = OrderItem
         fields = [
             "id", "order_id", "device_type", "model", "serial_number", "quantity",
-            "manufacturer_name", "manufacturer_address", "manufacturer_country",
-            "metrological_characteristics",
             "custom_fields_schema", "custom_fields_values",
         ]
 

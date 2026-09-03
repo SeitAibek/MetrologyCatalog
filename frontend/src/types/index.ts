@@ -107,10 +107,6 @@ export interface OrderItem {
   model: string;
   serialNumber: string;
   quantity: number;
-  manufacturerName?: string;
-  manufacturerAddress?: string;
-  manufacturerCountry?: string;
-  metrologicalCharacteristics?: string;
   customFieldsSchema?: CustomFieldDef[];
   customFieldsValues?: CustomFieldValues;
 }

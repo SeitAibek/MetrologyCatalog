@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api, { serviceApi, orderApi, userApi } from '../services/api';
-import type { Service, Laboratory, User } from '../types';
+import CustomFieldsForm from '../components/CustomFieldsForm';
+import type { Service, Laboratory, User, CustomFieldValues } from '../types';
 
 export default function CreateOrder() {
   const navigate = useNavigate();
@@ -25,13 +26,15 @@ export default function CreateOrder() {
     model: '',
     serialNumber: '',
     quantity: '1',
-    manufacturerName: '',
-    manufacturerAddress: '',
-    manufacturerCountry: '',
-    metrologicalCharacteristics: '',
     dueDate: '',
     clientComment: '',
   });
+
+  // Поля, специфичные для выбранной услуги (Service.customFieldsSchema).
+  // Не чистится при смене serviceId нарочно: если клиент передумает и
+  // вернётся к первой услуге, введённые данные не потеряются, а лишние
+  // ключи для новой услуги бэкенд молча игнорирует при валидации.
+  const [customFieldsValues, setCustomFieldsValues] = useState<CustomFieldValues>({});
 
   // Новый выбранный файл — та же схема, что и при первой подаче. Существующее
   // имя — то, что уже сохранено в черновике на бэкенде: пока пользователь не
@@ -71,13 +74,10 @@ export default function CreateOrder() {
           model: item?.model || '',
           serialNumber: item?.serialNumber || '',
           quantity: (item?.quantity ?? 1).toString(),
-          manufacturerName: item?.manufacturerName || '',
-          manufacturerAddress: item?.manufacturerAddress || '',
-          manufacturerCountry: item?.manufacturerCountry || '',
-          metrologicalCharacteristics: item?.metrologicalCharacteristics || '',
           dueDate: order.dueDate || '',
           clientComment: order.clientComment || '',
         });
+        setCustomFieldsValues(item?.customFieldsValues || {});
         setExistingPowerOfAttorneyName(order.powerOfAttorneyFileName || null);
         setExistingTechDocumentationName(order.techDocumentationFileName || null);
         if (user?.role === 'manager') setSelectedClientId(order.clientId);
@@ -133,9 +133,21 @@ export default function CreateOrder() {
       return;
     }
     if (!isDraft) {
-      if (!formData.dueDate || !formData.manufacturerName || !formData.manufacturerAddress
-        || !formData.manufacturerCountry || !formData.metrologicalCharacteristics) {
+      if (!formData.dueDate) {
         setError('Заполните все обязательные поля');
+        return;
+      }
+      // Как на бэкенде (_validate_custom_fields): required проверяется по
+      // схеме услуги, а не по захардкоженному списку, а строка из одних
+      // пробелов считается пустой (.trim() — фронтовый эквивалент .strip()),
+      // чтобы вердикт совпадал по обе стороны на одном и том же вводе.
+      const missingField = (selectedService?.customFieldsSchema ?? []).find(field => {
+        if (!field.required) return false;
+        const value = customFieldsValues[field.key];
+        return value === undefined || value === null || String(value).trim() === '';
+      });
+      if (missingField) {
+        setError(`Заполните поле «${missingField.label}»`);
         return;
       }
       if (!powerOfAttorney && !existingPowerOfAttorneyName) {
@@ -161,10 +173,10 @@ export default function CreateOrder() {
           model: formData.model,
           serialNumber: formData.serialNumber,
           quantity: parseInt(formData.quantity),
-          manufacturerName: formData.manufacturerName,
-          manufacturerAddress: formData.manufacturerAddress,
-          manufacturerCountry: formData.manufacturerCountry,
-          metrologicalCharacteristics: formData.metrologicalCharacteristics,
+          // Снимок схемы фронт не шлёт - его проставляет сам бэкенд
+          // (_create_order_items читает service.custom_fields_schema), так
+          // что источник снимка ровно один.
+          customFieldsValues,
         }],
       };
 
@@ -320,34 +332,18 @@ export default function CreateOrder() {
                   min="1" required className={inputClass}
                   style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Полное наименование производства * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
-                <input type="text" name="manufacturerName" value={formData.manufacturerName} onChange={handleChange}
-                  placeholder="Наименование завода-изготовителя" className={inputClass}
-                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Адрес производства * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
-                <input type="text" name="manufacturerAddress" value={formData.manufacturerAddress} onChange={handleChange}
-                  placeholder="Адрес завода-изготовителя" className={inputClass}
-                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Страна производства * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
-                <input type="text" name="manufacturerCountry" value={formData.manufacturerCountry} onChange={handleChange}
-                  placeholder="Страна изготовления" className={inputClass}
-                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Метрологические характеристики * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
-                <textarea name="metrologicalCharacteristics" value={formData.metrologicalCharacteristics} onChange={handleChange}
-                  placeholder="Диапазон измерений, погрешность, класс точности и т.д."
-                  rows={3}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all bg-white resize-none"
-                  style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-              </div>
             </div>
           </div>
+
+          {selectedService?.customFieldsSchema && selectedService.customFieldsSchema.length > 0 && (
+            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+              <CustomFieldsForm
+                schema={selectedService.customFieldsSchema}
+                values={customFieldsValues}
+                onChange={setCustomFieldsValues}
+              />
+            </div>
+          )}
 
           <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
             <p className="text-xs font-semibold text-[#00B2FF] uppercase tracking-wider mb-4" style={{ margin: '0 0 16px' }}>

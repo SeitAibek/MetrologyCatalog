@@ -44,6 +44,14 @@ EXECUTOR_PHONE = os.environ.get("EXECUTOR_PHONE", "")
 EXECUTOR_BANK = os.environ.get("EXECUTOR_BANK", "")
 
 
+# Потолок тела запроса. Вложения уходят в JSON base64-строкой, то есть в 4/3
+# раза длиннее файла, и в одном запросе их бывает два (доверенность +
+# документация при подаче заявки; два черновика экспертизы). Отсюда минимум:
+# 2 x 7 МиБ x 4/3 = 18.7 МиБ, плюс обвязка. Двигать это число можно только
+# вместе с MAX_ATTACHMENT_MB в orders/views.py — иначе лимит на документ
+# снова станет недостижимым.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "users.authentication.JwtAuthentication",
@@ -99,6 +107,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    # Ниже CorsMiddleware намеренно: иначе на ответ 413 не навесятся
+    # CORS-заголовки и браузер покажет сетевую ошибку вместо статуса.
+    'config.middleware.RequestTooBigJsonMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

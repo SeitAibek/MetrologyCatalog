@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api, { serviceApi, orderApi, userApi } from '../services/api';
 import CustomFieldsForm from '../components/CustomFieldsForm';
-import type { Service, Laboratory, User, CustomFieldValues } from '../types';
+import type { Service, User, CustomFieldValues } from '../types';
 
 export default function CreateOrder() {
   const navigate = useNavigate();
@@ -12,7 +12,6 @@ export default function CreateOrder() {
   const draftId: number | undefined = location.state?.draftId;
 
   const [services, setServices] = useState<Service[]>([]);
-  const [laboratories, setLaboratories] = useState<Laboratory[]>([]);
   const [clients, setClients] = useState<User[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,12 +20,10 @@ export default function CreateOrder() {
 
   const [formData, setFormData] = useState({
     serviceId: location.state?.serviceId?.toString() || '',
-    labId: '',
     deviceType: '',
     model: '',
     serialNumber: '',
     quantity: '1',
-    dueDate: '',
     clientComment: '',
   });
 
@@ -50,15 +47,11 @@ export default function CreateOrder() {
   const fetchData = async () => {
     try {
       setIsLoading(true);
-      const requests: Promise<any>[] = [
-        serviceApi.getAll(),
-        api.get('/laboratories'),
-      ];
+      const requests: Promise<any>[] = [serviceApi.getAll()];
       if (user?.role === 'manager') requests.push(userApi.getClients());
       const results = await Promise.all(requests);
       setServices(results[0].data);
-      setLaboratories(results[1].data);
-      if (user?.role === 'manager' && results[2]) setClients(results[2].data);
+      if (user?.role === 'manager' && results[1]) setClients(results[1].data);
 
       if (draftId) {
         const [orderRes, itemsRes] = await Promise.all([
@@ -69,12 +62,10 @@ export default function CreateOrder() {
         const item = itemsRes.data[0];
         setFormData({
           serviceId: order.serviceId?.toString() || '',
-          labId: order.labId?.toString() || '',
           deviceType: item?.deviceType || '',
           model: item?.model || '',
           serialNumber: item?.serialNumber || '',
           quantity: (item?.quantity ?? 1).toString(),
-          dueDate: order.dueDate || '',
           clientComment: order.clientComment || '',
         });
         setCustomFieldsValues(item?.customFieldsValues || {});
@@ -128,15 +119,11 @@ export default function CreateOrder() {
     // Черновик по определению может быть неполным — обязательны только поля,
     // без которых нельзя завести саму позицию (совпадает с тем, что требует
     // схема БД). Остальное проверяется только при реальной отправке.
-    if (!formData.serviceId || !formData.labId || !formData.deviceType || !formData.serialNumber) {
+    if (!formData.serviceId || !formData.deviceType || !formData.serialNumber) {
       setError('Заполните все обязательные поля');
       return;
     }
     if (!isDraft) {
-      if (!formData.dueDate) {
-        setError('Заполните все обязательные поля');
-        return;
-      }
       // Как на бэкенде (_validate_custom_fields): required проверяется по
       // схеме услуги, а не по захардкоженному списку, а строка из одних
       // пробелов считается пустой (.trim() — фронтовый эквивалент .strip()),
@@ -164,8 +151,7 @@ export default function CreateOrder() {
       const payload: any = {
         clientId: user?.role === 'manager' ? selectedClientId : user?.id,
         serviceId: parseInt(formData.serviceId),
-        labId: parseInt(formData.labId),
-        dueDate: formData.dueDate || null,
+        // Лабораторию бэкенд берёт у услуги, дата сдачи на этом шаге не задаётся.
         clientComment: formData.clientComment || null,
         isDraft,
         orderItems: [{
@@ -371,30 +357,6 @@ export default function CreateOrder() {
                 ) : existingTechDocumentationName && (
                   <p className="text-xs text-gray-500 mt-1" style={{ margin: '4px 0 0' }}>Уже прикреплено: {existingTechDocumentationName}</p>
                 )}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-            <p className="text-xs font-semibold text-[#00B2FF] uppercase tracking-wider mb-4" style={{ margin: '0 0 16px' }}>
-              Место и дата
-            </p>
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Лаборатория *</label>
-                <select name="labId" value={formData.labId} onChange={handleChange} required
-                  className={selectClass} style={{ fontFamily: 'inherit', marginBottom: 0 }}>
-                  <option value="">— Выберите лабораторию —</option>
-                  {laboratories.map(lab => (
-                    <option key={lab.id} value={lab.id}>{lab.name} ({lab.city})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Плановая дата сдачи * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
-                <input type="date" name="dueDate" value={formData.dueDate} onChange={handleChange}
-                  min={new Date().toISOString().split('T')[0]} max="2099-12-31"
-                  className={inputClass} style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
             </div>
           </div>

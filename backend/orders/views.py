@@ -241,7 +241,6 @@ def orders_list(request):
 
     client_id = request.data.get("client_id")
     service_id = request.data.get("service_id")
-    lab_id = request.data.get("lab_id")
     due_date = request.data.get("due_date")
     order_items = request.data.get("order_items")
     client_comment = request.data.get("client_comment")
@@ -256,12 +255,6 @@ def orders_list(request):
         return Response({"message": "Заявка вам не принадлежит"}, status=403)
     if not service_id:
         return Response({"message": "ID услуги обязателен"}, status=400)
-    if not lab_id:
-        return Response({"message": "ID лаборатории обязателен"}, status=400)
-    # Дата сдачи необязательна для черновика — черновик по определению может
-    # быть неполным; при реальной отправке (is_draft=False) она обязательна.
-    if not is_draft and not due_date:
-        return Response({"message": "Дата сдачи обязательна"}, status=400)
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
     if power_of_attorney_file:
@@ -277,11 +270,18 @@ def orders_list(request):
     if items_error:
         return items_error
 
-    schema = getattr(Service.objects.filter(id=service_id).first(), "custom_fields_schema", None) or []
+    # Лаборатория берётся у услуги, а не из запроса: клиент её не выбирает —
+    # фактического исполнителя всё равно назначает директор (assign_to_lab),
+    # а Order.lab остаётся тем, к чему услуга приписана.
+    service = Service.objects.filter(id=service_id).first()
+    if service is None:
+        return Response({"message": "Услуга не найдена"}, status=404)
+    lab_id = service.lab_id
+    schema = service.custom_fields_schema or []
     order_custom_fields_values = request.data.get("custom_fields_values") or {}
 
-    # Черновик по определению может быть неполным — как и с датой сдачи выше,
-    # кастомные поля обязательны только при реальной подаче.
+    # Черновик по определению может быть неполным — кастомные поля обязательны
+    # только при реальной подаче.
     if not is_draft:
         validation_error = _validate_custom_fields(
             schema, order_custom_fields_values,
@@ -340,17 +340,12 @@ def save_draft(request, id):
     is_draft = bool(request.data.get("is_draft"))
 
     service_id = request.data.get("service_id")
-    lab_id = request.data.get("lab_id")
     due_date = request.data.get("due_date")
     order_items = request.data.get("order_items")
     client_comment = request.data.get("client_comment")
 
     if not service_id:
         return Response({"message": "ID услуги обязателен"}, status=400)
-    if not lab_id:
-        return Response({"message": "ID лаборатории обязателен"}, status=400)
-    if not is_draft and not due_date:
-        return Response({"message": "Дата сдачи обязательна"}, status=400)
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
 
@@ -358,7 +353,11 @@ def save_draft(request, id):
     if items_error:
         return items_error
 
-    schema = getattr(Service.objects.filter(id=service_id).first(), "custom_fields_schema", None) or []
+    service = Service.objects.filter(id=service_id).first()
+    if service is None:
+        return Response({"message": "Услуга не найдена"}, status=404)
+    lab_id = service.lab_id
+    schema = service.custom_fields_schema or []
     order_custom_fields_values = request.data.get("custom_fields_values") or {}
 
     if not is_draft:
@@ -492,16 +491,15 @@ def order_detail(request, id):
         )
 
     service_id = request.data.get("service_id")
-    lab_id = request.data.get("lab_id")
-    due_date = request.data.get("due_date")
     client_comment = request.data.get("client_comment")
 
     if service_id is not None:
+        service = Service.objects.filter(id=service_id).first()
+        if service is None:
+            return Response({"message": "Услуга не найдена"}, status=404)
         order.service_id = service_id
-    if lab_id is not None:
-        order.lab_id = lab_id
-    if due_date:
-        order.due_date = due_date
+        # Лаборатория привязана к услуге; отдельно её не задают.
+        order.lab_id = service.lab_id
     if client_comment is not None:
         order.client_comment = client_comment
 
@@ -624,14 +622,15 @@ def resubmit_order(request, id):
         return items_error
 
     service_id = request.data.get("service_id")
-    lab_id = request.data.get("lab_id")
-    due_date = request.data.get("due_date")
     client_comment = request.data.get("client_comment")
 
     # Услуга могла смениться в этом же запросе — схему берём по эффективной
     # (новой, если пришла, иначе текущей) услуге заявки, не по старой.
     effective_service_id = service_id if service_id is not None else order.service_id
-    schema = getattr(Service.objects.filter(id=effective_service_id).first(), "custom_fields_schema", None) or []
+    service = Service.objects.filter(id=effective_service_id).first()
+    if service is None:
+        return Response({"message": "Услуга не найдена"}, status=404)
+    schema = service.custom_fields_schema or []
 
     # Как и остальные поля ниже — трогаем только если ключ реально пришёл,
     # иначе оставляем то, что уже сохранено на заявке.
@@ -647,10 +646,8 @@ def resubmit_order(request, id):
 
     if service_id is not None:
         order.service_id = service_id
-    if lab_id is not None:
-        order.lab_id = lab_id
-    if due_date:
-        order.due_date = due_date
+    # Лаборатория следует за услугой, из запроса не принимается.
+    order.lab_id = service.lab_id
     if client_comment is not None:
         order.client_comment = client_comment
     order.custom_fields_values = order_custom_fields_values or {}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { orderApi, contractApi, serviceApi, pdfApi, messageApi } from '../services/api';
 import api from '../services/api';
-import type { Order, Service, Laboratory, OrderItem, Message, OrderStatus, CustomFieldValues } from '../types';
+import type { Order, Service, OrderItem, Message, OrderStatus, CustomFieldValues } from '../types';
 import { downloadCertificate } from '../utils/download';
 import CustomFieldsForm from '../components/CustomFieldsForm';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../constants/orderStatus';
@@ -13,7 +13,6 @@ export default function Orders() {
   const { user } = useAuthStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [laboratories, setLaboratories] = useState<Laboratory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -43,7 +42,7 @@ export default function Orders() {
 
   // Модалка редактирования — менеджер
   const [editOrder, setEditOrder] = useState<Order | null>(null);
-  const [editForm, setEditForm] = useState({ serviceId: '', labId: '',  dueDate: '', clientComment: '' });
+  const [editForm, setEditForm] = useState({ serviceId: '', clientComment: '' });
   const [editLoading, setEditLoading] = useState(false);
 
   // Модалка возврата на доработку — менеджер
@@ -60,7 +59,7 @@ export default function Orders() {
     id?: number; deviceType: string; model: string; serialNumber: string; quantity: number;
     customFieldsValues: CustomFieldValues;
   }>>([]);
-  const [resubmitForm, setResubmitForm] = useState({ serviceId: '', labId: '', dueDate: '', clientComment: '' });
+  const [resubmitForm, setResubmitForm] = useState({ serviceId: '', clientComment: '' });
   const [resubmitLoading, setResubmitLoading] = useState(false);
 
   const statusLabels = ORDER_STATUS_LABELS;
@@ -107,7 +106,6 @@ export default function Orders() {
   useEffect(() => {
     fetchOrders();
     serviceApi.getAll().then(res => setServices(res.data)).catch(() => {});
-    api.get('/laboratories').then(res => setLaboratories(res.data)).catch(() => {});
   }, []);
 
   // ─── Утилита скачивания blob ──────────────────────────────────────────
@@ -266,9 +264,6 @@ export default function Orders() {
     setEditOrder(order);
     setEditForm({
       serviceId: order.serviceId.toString(),
-      labId: order.labId.toString(),
-      
-      dueDate: order.dueDate || '',
       clientComment: order.clientComment || '',
     });
   };
@@ -279,9 +274,6 @@ export default function Orders() {
       setEditLoading(true);
       await orderApi.update(editOrder.id, {
         serviceId: parseInt(editForm.serviceId),
-        labId: parseInt(editForm.labId),
-        
-        dueDate: editForm.dueDate,
         clientComment: editForm.clientComment,
       });
       setEditOrder(null);
@@ -315,8 +307,6 @@ export default function Orders() {
     setResubmitOrder(order);
     setResubmitForm({
       serviceId: order.serviceId.toString(),
-      labId: order.labId.toString(),
-      dueDate: order.dueDate || '',
       clientComment: order.clientComment || '',
     });
     try {
@@ -390,8 +380,6 @@ export default function Orders() {
       setResubmitLoading(true);
       await orderApi.resubmit(resubmitOrder.id, {
         serviceId: parseInt(resubmitForm.serviceId),
-        labId: parseInt(resubmitForm.labId),
-        dueDate: resubmitForm.dueDate,
         clientComment: resubmitForm.clientComment,
         orderItems: resubmitItems.map(item => ({
           deviceType: item.deviceType,
@@ -1033,11 +1021,6 @@ export default function Orders() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Плановая дата сдачи</label>
-                <input type="date" value={editForm.dueDate} onChange={e => setEditForm(p => ({ ...p, dueDate: e.target.value }))}
-                  className={inputClass} style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-              </div>
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Комментарий</label>
                 <textarea value={editForm.clientComment} onChange={e => setEditForm(p => ({ ...p, clientComment: e.target.value }))}
                   rows={3} className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm bg-white outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all resize-none"
@@ -1126,19 +1109,6 @@ export default function Orders() {
                   <option value="">— Выберите услугу —</option>
                   {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Лаборатория</label>
-                <select value={resubmitForm.labId} onChange={e => setResubmitForm(p => ({ ...p, labId: e.target.value }))}
-                  className={selectClass} style={{ fontFamily: 'inherit', marginBottom: 0 }}>
-                  <option value="">— Выберите лабораторию —</option>
-                  {laboratories.map(lab => <option key={lab.id} value={lab.id}>{lab.name} {lab.city ? `(${lab.city})` : ''}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Плановая дата сдачи</label>
-                <input type="date" value={resubmitForm.dueDate} onChange={e => setResubmitForm(p => ({ ...p, dueDate: e.target.value }))}
-                  className={inputClass} style={{ fontFamily: 'inherit', marginBottom: 0 }} />
               </div>
 
               {/* Приборы */}

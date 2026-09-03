@@ -937,6 +937,16 @@ def contract_detail(request, order_id):
     if err:
         return err
 
+    # Договор загружается на поданную заявку, ожидающую его: без этой проверки
+    # менеджер поднимал в awaiting_approval уже завершённую или закрытую
+    # заявку. После отклонения заявка возвращается в pending_contract — то есть
+    # повторная загрузка этим же условием и покрывается.
+    if order.status != "pending_contract":
+        return Response(
+            {"message": "Загрузить договор можно только для заявки в статусе 'pending_contract'"},
+            status=400,
+        )
+
     file_data = request.data.get("file_data")
     file_name = request.data.get("file_name")
 
@@ -1000,6 +1010,16 @@ def resubmit_for_approval(request, order_id):
         return err
     if not contract.contract_file:
         return Response({"message": "Сначала загрузите файл договора"}, status=400)
+
+    # Отправлять на согласование можно то, что на нём ещё не было или уже
+    # вернулось отклонённым. Без гварда менеджер отправлял сюда подписанный
+    # договор, а reset_approval_state ниже стирал все пять подписей — при том
+    # что регистрационный номер оставался на месте.
+    if contract.status not in ("draft", "rejected"):
+        return Response(
+            {"message": f"Договор в статусе '{contract.status}' повторно на согласование не отправляется"},
+            status=400,
+        )
 
     contract.status = "pending_approval"
     contract.reset_approval_state()

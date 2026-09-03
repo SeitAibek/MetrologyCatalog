@@ -20,13 +20,35 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Один разлогин на страницу: на маунте уходит несколько запросов сразу, и с
+// протухшим токеном каждый ответ 401 иначе дёргает logout и присваивает
+// location.href отдельно. Флаг живёт до перезагрузки — редирект её и делает.
+let sessionExpiredHandled = false;
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 401 = токен не прислан, протух или невалиден (роль ни при чём — отказ по
-    // роли приходит как 403). Продолжать с такой сессией нечем: чистим её через
-    // сам стор, чтобы ключи localStorage знал только он, и уводим на логин.
-    if (error.response?.status === 401 && window.location.pathname !== '/login') {
+    // Всё под /auth/ вызывает неаутентифицированный пользователь, и 401 там
+    // значит "неверные учётные данные", а не "сессия кончилась" — такую ошибку
+    // показывает сама форма, разлогинивать и уводить с неё нельзя.
+    const isAuthRequest = (error.config?.url ?? '').startsWith('/auth/');
+
+    // Запрос ушёл без токена (аноним на публичной главной — она тоже тянет
+    // список услуг) — 401 тут значит "нужна авторизация", а не "сессия
+    // истекла": разлогинивать нечего, уводить посетителя со страницы незачем.
+    const wasAuthenticatedRequest = Boolean(error.config?.headers?.Authorization);
+
+    // 401 с посланным токеном = токен протух или невалиден (роль ни при чём —
+    // отказ по роли приходит как 403). Продолжать с такой сессией нечем: чистим
+    // её через сам стор, чтобы ключи localStorage знал только он.
+    if (
+      error.response?.status === 401
+      && !isAuthRequest
+      && wasAuthenticatedRequest
+      && !sessionExpiredHandled
+      && window.location.pathname !== '/login'
+    ) {
+      sessionExpiredHandled = true;
       useAuthStore.getState().logout();
       window.location.href = '/login';
     }

@@ -1235,18 +1235,43 @@ def reject_contract(request, order_id):
     return Response(ContractSerializer(contract).data)
 
 
+# Аннулируется договор, не вступивший в силу; расторгается — действующий, то
+# есть подписанный. Из терминальных статусов не выходят вообще: раньше annul по
+# подписанному проходил, а terminate поверх уже аннулированного переводил
+# annulled -> terminated.
+CLOSE_ALLOWED_FROM = {
+    "annulled": ("draft", "pending_approval", "approved", "rejected"),
+    "terminated": ("signed",),
+}
+CLOSE_REFUSAL = {
+    "annulled": "аннулируется только договор, не вступивший в силу (до подписания)",
+    "terminated": "расторгается только подписанный договор",
+}
+
+
 def _close_contract(request, order_id, action):
     """action: 'annulled' или 'terminated' — совпадает и со статусом Contract, и Order."""
     contract, err = _get_contract_or_404(order_id)
     if err:
         return err
 
+    if contract.status not in CLOSE_ALLOWED_FROM[action]:
+        return Response(
+            {"message": f"Договор в статусе '{contract.status}': {CLOSE_REFUSAL[action]}"},
+            status=400,
+        )
+
+    # Подписи и регистрационный номер намеренно не сбрасываются: это след того,
+    # кто и когда подписал и под каким номером договор был зарегистрирован.
+    # Недействительность выражает сам терминальный статус.
     contract.status = action
     setattr(contract, f"{action}_at", timezone.now())
     setattr(contract, f"{action}_by_id", request.user.id)
     setattr(contract, f"{action}_reason", request.data.get("reason"))
     contract.save()
 
+    # Заявка уходит в тот же терминальный статус из любого рабочего: без
+    # действующего договора продолжать её нечем.
     order = Order.objects.filter(id=order_id).first()
     if order:
         order.status = action

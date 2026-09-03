@@ -1,6 +1,7 @@
 import time
 import base64
 import binascii
+from django.db import models
 from django.db.models import Sum
 from django.db import transaction
 from django.http import HttpResponse
@@ -18,20 +19,35 @@ from . import email_utils, pdf_service
 from notifications import services as notification_services
 
 
-# Колонки с содержимым файлов (base64). В списках они не нужны — сериализатор
-# отдаёт только имена, — но весят на порядок больше всех остальных полей вместе
-# взятых: при лимите 7 МБ на вложение одна строка тянет до ~28 МБ.
+def _blob_fields(model):
+    """Колонки с содержимым файла: TextField, у которого есть парная колонка
+    <имя>_name под имя файла. Это соглашение проекта — вложение всегда хранится
+    парой "содержимое + имя", — и оно отличает их от обычных длинных текстов
+    (expertise_conclusion, client_comment), у которых пары нет.
+
+    Выводим из модели, а не перечисляем руками: следующая base64-колонка
+    попадёт под defer сама, без правки этого списка.
+
+    Обратная сторона: правило держится на соглашении. Если добавить поле с
+    base64 БЕЗ парной колонки <имя>_name, оно сюда не попадёт — ошибки не
+    будет, списки просто молча начнут тянуть его целиком и станут тяжёлыми,
+    как было до defer. Кладёте содержимое файла — заводите и колонку с именем.
+    """
+    names = {f.name for f in model._meta.get_fields() if hasattr(f, "attname")}
+    return tuple(
+        f.name for f in model._meta.get_fields()
+        if isinstance(f, models.TextField) and f"{f.name}_name" in names
+    )
+
+
+# В списках содержимое файлов не нужно — сериализатор отдаёт только имена, — но
+# весит оно на порядок больше всех остальных полей вместе взятых: при лимите
+# 7 МБ на вложение одна строка тянет до ~28 МБ.
 # defer, а не only: only перечисляет то, ЧТО грузить, и стоит забыть одно поле
 # из двадцати в OrderSerializer — получим отложенную загрузку и лишний запрос на
 # каждую строку. defer перечисляет то, что грузить НЕ надо, и новые обычные поля
 # останутся быстрыми сами собой.
-ATTACHMENT_CONTENT_FIELDS = (
-    "power_of_attorney_file",
-    "tech_documentation_file",
-    "payment_receipt",
-    "test_program_draft_file",
-    "type_description_draft_file",
-)
+ATTACHMENT_CONTENT_FIELDS = _blob_fields(Order)
 
 
 def _orders_for_list():
@@ -134,20 +150,25 @@ def _check_order_read_access(request, order):
 CONTRACT_STAFF_ROLES = ("manager", "approver", "financier", "director", "gen_director")
 
 
-def _check_contract_party(request, contract):
-    # Стороны договора: штабные роли, которые его ведут и подписывают, клиент
-    # своей заявки и назначенный на неё метролог. Постороннему — 404, а не 403:
-    # 403 подтвердил бы, что договор по такому заказу существует.
-    role = request.user.role
+def _is_order_party(user, order):
+    """Стороны заявки: штабные роли, её клиент и назначенный на неё метролог."""
+    role = user.role
     if role in CONTRACT_STAFF_ROLES:
-        return None
+        return True
+    if role == "client":
+        return order.client_id == user.id
+    if role == "metrolog":
+        return order.metrologist_id == user.id
+    return False
 
+
+def _check_contract_party(request, contract):
+    # Постороннему — 404, а не 403: 403 подтвердил бы, что договор по такому
+    # заказу существует. Предикат общий с пакетной ручкой, чтобы правила
+    # доступа не разъехались между ними.
     order = Order.objects.filter(id=contract.order_id).first()
-    if order:
-        if role == "client" and order.client_id == request.user.id:
-            return None
-        if role == "metrolog" and order.metrologist_id == request.user.id:
-            return None
+    if order and _is_order_party(request.user, order):
+        return None
     return Response({"message": "Договор не найден"}, status=404)
 
 
@@ -1072,6 +1093,47 @@ def contract_detail(request, order_id):
     notification_services.notify_parallel_approvers(order_id, order.order_number)
 
     return Response(ContractSerializer(contract).data)
+
+
+# Потолок на длину списка: ручка не должна становиться способом выгрузить все
+# договоры разом. Страница со списком заявок укладывается с большим запасом.
+MAX_BULK_ORDER_IDS = 100
+
+
+@api_view(["GET"])
+def contracts_bulk(request):
+    """Договоры по списку заявок одним запросом: ?orderIds=1,2,3
+
+    GET с query, а не POST: это чтение, и при потолке в 100 id строка запроса
+    не превышает ~700 символов — POST понадобился бы только для списков,
+    которые в неё не влезают.
+
+    Права те же, что у одиночной contract_detail: стороны заявки. Чужие id
+    молча выпадают из ответа — 403 на них подтвердил бы, что такая заявка есть.
+    Отсутствующий договор тоже не ошибка, а пропуск: у черновиков его нет.
+    """
+    raw = (request.query_params.get("orderIds") or "").strip()
+    if not raw:
+        return Response({})
+
+    try:
+        order_ids = [int(x) for x in raw.split(",") if x.strip()]
+    except ValueError:
+        return Response({"message": "orderIds: ожидается список числовых id через запятую"}, status=400)
+
+    if len(order_ids) > MAX_BULK_ORDER_IDS:
+        return Response(
+            {"message": f"orderIds: за раз можно запросить не больше {MAX_BULK_ORDER_IDS} заявок"},
+            status=400,
+        )
+
+    # Две выборки на любое число id, без цикла по одиночным запросам: сначала
+    # заявки — чтобы проверить стороны, потом их договоры.
+    orders = Order.objects.filter(id__in=order_ids).only("id", "client_id", "metrologist_id")
+    allowed_ids = [o.id for o in orders if _is_order_party(request.user, o)]
+
+    contracts = Contract.objects.filter(order_id__in=allowed_ids).defer("contract_file")
+    return Response({str(c.order_id): ContractSerializer(c).data for c in contracts})
 
 
 @api_view(["GET"])

@@ -1064,6 +1064,15 @@ def _notify_gen_director_after_client_signs(request, order_id, contract):
 @api_view(["PUT"])
 @permission_classes([has_role("client")])
 def sign_by_client(request, order_id):
+    # Роль client общая для всех заказчиков, поэтому одной её мало: без проверки
+    # владения любой клиент подписывал бы договор по чужой заявке, и в
+    # client_signed_by_id оставался бы он же.
+    order, err = _get_order_or_404(order_id)
+    if err:
+        return err
+    if order.client_id != request.user.id:
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
+
     return _sign_role(
         request, order_id, "client",
         extra_check=_client_sign_precondition,

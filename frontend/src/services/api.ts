@@ -122,10 +122,11 @@ export const contractApi = {
 };
 
 export const notificationApi = {
-  getAll: (userId: number) => api.get('/notifications', { params: { userId } }),
-  getUnread: (userId: number) => api.get('/notifications/unread', { params: { userId } }),
+  // userId не передаётся: бэкенд берёт пользователя из токена.
+  getAll: () => api.get('/notifications'),
+  getUnread: () => api.get('/notifications/unread'),
   markAsRead: (id: number) => api.put(`/notifications/${id}/read`),
-  markAllAsRead: (userId: number) => api.put('/notifications/read-all', null, { params: { userId } }),
+  markAllAsRead: () => api.put('/notifications/read-all'),
 };
 
 export const resultApi = {

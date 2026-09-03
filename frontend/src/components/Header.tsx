@@ -48,7 +48,7 @@ export default function Header() {
     // Не перезаписываем состояние 10 секунд после markAllAsRead
     if (isMutatingRef.current || Date.now() - lastReadAllRef.current < 10_000) return;
     try {
-      const res = await notificationApi.getAll(user.id);
+      const res = await notificationApi.getAll();
       setNotifications((res.data as Notification[]).slice(0, 20));
     } catch {}
   };
@@ -69,7 +69,7 @@ export default function Header() {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     lastReadAllRef.current = Date.now();
     try {
-      await notificationApi.markAllAsRead(user.id);
+      await notificationApi.markAllAsRead();
     } catch {}
   };
 

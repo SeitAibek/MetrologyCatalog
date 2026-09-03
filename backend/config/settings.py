@@ -59,6 +59,19 @@ REST_FRAMEWORK = {
     ),
 }
 
+# custom_fields_values хранит значения по ключам из Service.custom_fields_schema
+# (field.key - снейк-кейс, задаётся менеджером через шаблон услуги). Без
+# ignore_fields камелайзер рекурсивно переименовал бы и эти вложенные ключи
+# при отдаче через API (manufacturer_name -> manufacturerName), а схема
+# по-прежнему возвращала бы key как есть (это строковое значение, а не ключ
+# словаря) - фронт не смог бы сопоставить values[field.key] и увидел бы поля
+# пустыми при повторном открытии заявки.
+JSON_CAMEL_CASE = {
+    "JSON_UNDERSCOREIZE": {
+        "ignore_fields": ("custom_fields_values",),
+    },
+}
+
 
 # Application definition
 

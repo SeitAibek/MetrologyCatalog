@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-import type { AuthResponse, LoginRequest, RegisterRequest, ForgotPasswordRequest, ResetPasswordRequest } from '../types';
+import type { AuthResponse, LoginRequest, RegisterRequest, ForgotPasswordRequest, ResetPasswordRequest, CustomFieldDef } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081/api';
 
@@ -43,6 +43,8 @@ export const serviceApi = {
   getById: (id: number) => api.get(`/services/${id}`),
   getByMeasurementType: (type: string) => api.get(`/services/type/${type}`),
   getByLabId: (labId: number) => api.get(`/services/lab/${labId}`),
+  updateTemplate: (id: number, schema: CustomFieldDef[]) =>
+    api.put(`/services/${id}/template`, { customFieldsSchema: schema }),
 };
 
 export const orderApi = {

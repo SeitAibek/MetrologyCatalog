@@ -28,6 +28,20 @@ export interface Laboratory {
   email?: string;
 }
 
+export type CustomFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select';
+export type CustomFieldScope = 'item' | 'order';
+
+export interface CustomFieldDef {
+  key: string;
+  label: string;
+  type: CustomFieldType;
+  required: boolean;
+  scope: CustomFieldScope;
+  options?: string[];
+}
+
+export type CustomFieldValues = Record<string, string | number>;
+
 export interface Service {
   id: number;
   name: string;
@@ -39,6 +53,7 @@ export interface Service {
   isActive: boolean;
   standard?: string;
   labName?: string;
+  customFieldsSchema?: CustomFieldDef[];
 }
 
 export type OrderStatus =
@@ -81,6 +96,8 @@ export interface Order {
   testProgramDraftFileName?: string;
   typeDescriptionDraftFileName?: string;
   expertiseConclusion?: string;
+  customFieldsSchema?: CustomFieldDef[];
+  customFieldsValues?: CustomFieldValues;
 }
 
 export interface OrderItem {
@@ -94,6 +111,8 @@ export interface OrderItem {
   manufacturerAddress?: string;
   manufacturerCountry?: string;
   metrologicalCharacteristics?: string;
+  customFieldsSchema?: CustomFieldDef[];
+  customFieldsValues?: CustomFieldValues;
 }
 
 export type ContractStatus =

@@ -7,7 +7,7 @@ import type { Order, Service, OrderItem, Message, OrderStatus, CustomFieldValues
 import { downloadCertificate } from '../utils/download';
 import CustomFieldsForm from '../components/CustomFieldsForm';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../constants/orderStatus';
-import { ATTACHMENT_ACCEPT, validateAttachment } from '../constants/attachments';
+import { ATTACHMENT_ACCEPT, MAX_RECEIPT_MB, validateAttachment } from '../constants/attachments';
 
 export default function Orders() {
   const navigate = useNavigate();
@@ -393,7 +393,7 @@ export default function Orders() {
 
   // ─── Клиент: загрузить чек об оплате ───────────────────────
   const handleUploadReceipt = async (order: Order, file: File) => {
-    const problem = validateAttachment(file);
+    const problem = validateAttachment(file, MAX_RECEIPT_MB);
     if (problem) {
       setError(problem);
       return;

@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api, { serviceApi, orderApi, userApi } from '../services/api';
 import CustomFieldsForm from '../components/CustomFieldsForm';
-import { ATTACHMENT_ACCEPT, MAX_PAIRED_ATTACHMENT_MB, validateAttachment } from '../constants/attachments';
+import { ATTACHMENT_ACCEPT, validateAttachment, validateAttachmentsTotal } from '../constants/attachments';
 import type { Service, User, CustomFieldValues } from '../types';
 
 export default function CreateOrder() {
@@ -100,8 +100,7 @@ export default function CreateOrder() {
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Доверенность и документация уходят в ОДНОМ запросе, поэтому парный предел.
-    const problem = validateAttachment(file, MAX_PAIRED_ATTACHMENT_MB);
+    const problem = validateAttachment(file);
     if (problem) {
       setError(problem);
       return;
@@ -148,6 +147,14 @@ export default function CreateOrder() {
         setError('Прикрепите документацию на СИ');
         return;
       }
+    }
+
+    // Доверенность и документация уходят одним запросом — сервер упрётся в
+    // потолок тела раньше, чем в лимит на отдельный файл.
+    const tooMuch = validateAttachmentsTotal([powerOfAttorney?.data, techDocumentation?.data]);
+    if (tooMuch) {
+      setError(tooMuch);
+      return;
     }
 
     try {

@@ -182,9 +182,21 @@ def create_result(request):
     # подписью метролога: и автор, и право его выпустить берутся из токена и
     # назначения, а не из metrologist_id в теле запроса.
     if order.metrologist_id != request.user.id:
-        return Response({"message": "Заявка не назначена вам"}, status=403)
+        return Response({"message": "Заявка не найдена"}, status=404)
+    # Результат выпускается по ходу лабораторной работы: сегодня фронт делает
+    # это на переходе under_review -> completed, in_work оставлен как второй
+    # рабочий статус. Из draft, оплаты, экспертизы и терминальных — нельзя.
+    if order.status not in ("in_work", "under_review"):
+        return Response(
+            {"message": f"Из статуса '{order.status}' результат не выпускается"},
+            status=400,
+        )
     if result_type not in Result.ResultType.values:
         return Response({"message": f"Недопустимый тип результата: {result_type}"}, status=400)
+    # Типов результата три (сертификат/протокол/отчёт), поэтому несколько
+    # документов на заявку допустимы — но не два одинаковых поверх друг друга.
+    if Result.objects.filter(order_id=order.id, result_type=result_type).exists():
+        return Response({"message": "Результат такого типа по заявке уже выпущен"}, status=400)
 
     now = timezone.now()
 

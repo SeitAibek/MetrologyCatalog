@@ -1062,9 +1062,11 @@ def download_contract_file(request, order_id):
     if decode_err:
         return decode_err
     file_name = contract.contract_file_name or f"contract_{order_id}.pdf"
-    content_type = "application/pdf" if file_name.endswith(".pdf") else "application/octet-stream"
 
-    response = HttpResponse(file_bytes, content_type=content_type)
+    # Тип не выводим из имени файла: имя задаёт загрузивший, и объявить чужое
+    # содержимое как application/pdf значит соврать браузеру. Загруженное
+    # отдаётся нейтральным типом и только вложением.
+    response = HttpResponse(file_bytes, content_type="application/octet-stream")
     response["Content-Disposition"] = f'attachment; filename="{file_name}"'
     return response
 
@@ -1361,7 +1363,9 @@ def download_contract(request, order_id):
         if decode_err:
             return decode_err
         file_name = contract.contract_file_name or f"contract_{order_id}.pdf"
-        response = HttpResponse(file_bytes, content_type="application/pdf")
+        # Загруженный менеджером файл — тем же нейтральным типом, что и в
+        # download_contract_file. Сгенерированный ниже PDF наш, его тип честен.
+        response = HttpResponse(file_bytes, content_type="application/octet-stream")
         response["Content-Disposition"] = f'attachment; filename="{file_name}"'
         return response
 

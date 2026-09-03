@@ -172,8 +172,9 @@ export const userApi = {
 
 export const messageApi = {
   getByOrderId: (orderId: number) => api.get(`/messages/${orderId}`),
-  send: (orderId: number, senderId: number, text: string) =>
-    api.post(`/messages/${orderId}`, { senderId, text }),
+  // senderId не передаётся: отправителя бэкенд берёт из токена.
+  send: (orderId: number, text: string) =>
+    api.post(`/messages/${orderId}`, { text }),
 };
 
 export default api;

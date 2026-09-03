@@ -71,7 +71,7 @@ export default function Queue() {
     if (!messageText.trim() || !user) return;
     try {
       setSendingMessage(true);
-      await messageApi.send(orderId, user.id, messageText.trim());
+      await messageApi.send(orderId, messageText.trim());
       setMessageText('');
       fetchMessages(orderId);
     } catch (err: any) {

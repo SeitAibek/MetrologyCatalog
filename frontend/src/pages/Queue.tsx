@@ -4,6 +4,7 @@ import api, { orderApi, messageApi } from '../services/api';
 import type { Order, Message } from '../types';
 import { downloadCertificate, downloadContract } from '../utils/download';
 import { ORDER_STATUS_LABELS_QUEUE, ORDER_STATUS_COLORS } from '../constants/orderStatus';
+import { ATTACHMENT_ACCEPT } from '../constants/attachments';
 
 export default function Queue() {
   const { user } = useAuthStore();
@@ -399,7 +400,7 @@ export default function Queue() {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Проект программы испытаний *</label>
-              <input type="file" accept=".pdf,.doc,.docx"
+              <input type="file" accept={ATTACHMENT_ACCEPT}
                 onChange={e => handleDraftFileChange(e, setTestProgramDraft)}
                 className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
               {testProgramDraft && (
@@ -409,7 +410,7 @@ export default function Queue() {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Проект описания типа *</label>
-              <input type="file" accept=".pdf,.doc,.docx"
+              <input type="file" accept={ATTACHMENT_ACCEPT}
                 onChange={e => handleDraftFileChange(e, setTypeDescriptionDraft)}
                 className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
               {typeDescriptionDraft && (

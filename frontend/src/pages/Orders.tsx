@@ -7,6 +7,7 @@ import type { Order, Service, OrderItem, Message, OrderStatus, CustomFieldValues
 import { downloadCertificate } from '../utils/download';
 import CustomFieldsForm from '../components/CustomFieldsForm';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../constants/orderStatus';
+import { ATTACHMENT_ACCEPT, ATTACHMENT_FORMATS_LABEL, hasAllowedAttachmentExtension } from '../constants/attachments';
 
 export default function Orders() {
   const navigate = useNavigate();
@@ -168,10 +169,8 @@ export default function Orders() {
 
   // ─── Договорные действия ─────────────────────────────────────────────
   const handleUploadContract = async (order: Order, file: File) => {
-    const allowed = ['application/pdf', 'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!allowed.includes(file.type)) {
-      setError('Поддерживаются только PDF и Word документы');
+    if (!hasAllowedAttachmentExtension(file.name)) {
+      setError(`Поддерживаются только ${ATTACHMENT_FORMATS_LABEL}`);
       return;
     }
     // Порог считаем от сырого файла, а сервер — от base64-строки (она больше
@@ -404,9 +403,8 @@ export default function Orders() {
       setError('Файл слишком большой. Максимум 5MB');
       return;
     }
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(file.type)) {
-      setError('Поддерживаются только JPG, PNG, WEBP и PDF');
+    if (!hasAllowedAttachmentExtension(file.name)) {
+      setError(`Поддерживаются только ${ATTACHMENT_FORMATS_LABEL}`);
       return;
     }
     try {
@@ -665,7 +663,7 @@ export default function Orders() {
                           </div>
                           <label className="text-xs text-green-600 hover:text-green-800 cursor-pointer font-medium underline">
                             Заменить
-                            <input type="file" accept="image/*,.pdf" className="hidden"
+                            <input type="file" accept={ATTACHMENT_ACCEPT} className="hidden"
                               onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadReceipt(order, f); e.target.value = ''; }} />
                           </label>
                         </div>
@@ -692,7 +690,7 @@ export default function Orders() {
                               <span className="text-xs opacity-60 ml-auto">JPG, PNG, PDF до 5MB</span>
                             </>
                           )}
-                          <input type="file" accept="image/*,.pdf" className="hidden" disabled={uploadingReceipt === order.id}
+                          <input type="file" accept={ATTACHMENT_ACCEPT} className="hidden" disabled={uploadingReceipt === order.id}
                             onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadReceipt(order, f); e.target.value = ''; }} />
                         </label>
                       )}
@@ -770,7 +768,7 @@ export default function Orders() {
                             Загрузить договор
                           </>
                         )}
-                        <input type="file" accept=".pdf,.doc,.docx" className="hidden"
+                        <input type="file" accept={ATTACHMENT_ACCEPT} className="hidden"
                           disabled={uploadingContract === order.id}
                           onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadContract(order, f); e.target.value = ''; }} />
                       </label>

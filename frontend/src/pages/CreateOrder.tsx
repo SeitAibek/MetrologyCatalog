@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import api, { serviceApi, orderApi, userApi } from '../services/api';
 import CustomFieldsForm from '../components/CustomFieldsForm';
+import { ATTACHMENT_ACCEPT } from '../constants/attachments';
 import type { Service, User, CustomFieldValues } from '../types';
 
 export default function CreateOrder() {
@@ -338,7 +339,7 @@ export default function CreateOrder() {
             <div className="flex flex-col gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Доверенность * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
-                <input type="file" accept=".pdf,.jpg,.jpeg,.rar"
+                <input type="file" accept={ATTACHMENT_ACCEPT}
                   onChange={e => handleAttachmentChange(e, setPowerOfAttorney)}
                   className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
                 {powerOfAttorney ? (
@@ -349,7 +350,7 @@ export default function CreateOrder() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Документация на СИ * <span className="text-gray-400 font-normal">(необязательно для черновика)</span></label>
-                <input type="file" accept=".pdf,.jpg,.jpeg,.rar"
+                <input type="file" accept={ATTACHMENT_ACCEPT}
                   onChange={e => handleAttachmentChange(e, setTechDocumentation)}
                   className="w-full text-sm text-gray-700" style={{ marginBottom: 0 }} />
                 {techDocumentation ? (

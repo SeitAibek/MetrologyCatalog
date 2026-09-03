@@ -110,6 +110,26 @@ def _check_order_read_access(request, order):
     return None
 
 
+CONTRACT_STAFF_ROLES = ("manager", "approver", "financier", "director", "gen_director")
+
+
+def _check_contract_party(request, contract):
+    # Стороны договора: штабные роли, которые его ведут и подписывают, клиент
+    # своей заявки и назначенный на неё метролог. Постороннему — 404, а не 403:
+    # 403 подтвердил бы, что договор по такому заказу существует.
+    role = request.user.role
+    if role in CONTRACT_STAFF_ROLES:
+        return None
+
+    order = Order.objects.filter(id=contract.order_id).first()
+    if order:
+        if role == "client" and order.client_id == request.user.id:
+            return None
+        if role == "metrolog" and order.metrologist_id == request.user.id:
+            return None
+    return Response({"message": "Договор не найден"}, status=404)
+
+
 def _apply_if_present(request, obj, field):
     # Отсутствие ключа в теле запроса значит "не менялось" и не должно затирать
     # уже сохранённое значение — актуально для вложений: фронт не перезаливает
@@ -874,6 +894,9 @@ def submit_expertise(request, id):
 def contract_detail(request, order_id):
     if request.method == "GET":
         contract, err = _get_contract_or_404(order_id)
+        if err:
+            return err
+        err = _check_contract_party(request, contract)
         if err:
             return err
         return Response(ContractSerializer(contract).data)

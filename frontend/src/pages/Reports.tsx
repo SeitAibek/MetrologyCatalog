@@ -107,7 +107,7 @@ export default function Reports() {
         {/* Таблица заявок */}
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
           <div className="hidden md:grid grid-cols-5 gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100">
-            {['№ Заявки', 'Клиент ID', 'Статус', 'Стоимость', 'Срок'].map(col => (
+            {['№ Заявки', 'Клиент', 'Статус', 'Стоимость', 'Срок'].map(col => (
               <div key={col} className="text-xs font-semibold text-[#00B2FF] uppercase tracking-wider">{col}</div>
             ))}
           </div>
@@ -121,7 +121,7 @@ export default function Reports() {
                 return (
                   <div key={order.id} className="grid grid-cols-1 md:grid-cols-5 gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors items-center">
                     <div className="font-bold text-[#0A2E5C]">#{order.orderNumber}</div>
-                    <div className="text-sm text-gray-500">ID: {order.clientId}</div>
+                    <div className="text-sm text-gray-500">{order.clientName || `ID: ${order.clientId}`}</div>
                     <div>
                       <span className={`text-xs font-semibold px-3 py-1 rounded-full ${sc.bg} ${sc.text}`}>
                         {statusLabels[order.status] || order.status}

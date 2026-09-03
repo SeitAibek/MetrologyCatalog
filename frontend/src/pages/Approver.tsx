@@ -150,11 +150,11 @@ export default function Approver() {
                   <div className="bg-gray-50 rounded-xl p-4 mb-4 grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Клиент ID</p>
-                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>#{order.clientId}</p>
+                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{order.clientName || `#${order.clientId}`}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Лаборатория</p>
-                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>#{order.labId}</p>
+                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{order.labName || `#${order.labId}`}</p>
                     </div>
                   </div>
 

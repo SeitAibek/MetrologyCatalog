@@ -236,7 +236,7 @@ export default function Director() {
                       </div>
                       <div>
                         <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Лаборатория</p>
-                        <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>#{order.labId}</p>
+                        <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{order.labName || `#${order.labId}`}</p>
                       </div>
                     </div>
 
@@ -348,7 +348,7 @@ export default function Director() {
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Запрошена лаб.</p>
                       <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>
-                        {laboratories.find(l => l.id === order.labId)?.name || `#${order.labId}`}
+                        {order.labName || `#${order.labId}`}
                       </p>
                     </div>
                   </div>

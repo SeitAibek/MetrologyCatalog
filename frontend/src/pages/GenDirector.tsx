@@ -229,7 +229,7 @@ export default function GenDirector() {
                       </div>
                       <div>
                         <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Лаборатория</p>
-                        <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>#{order.labId}</p>
+                        <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{order.labName || `#${order.labId}`}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Номер договора</p>
@@ -343,7 +343,7 @@ export default function GenDirector() {
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Запрошена лаб.</p>
                       <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>
-                        {laboratories.find(l => l.id === order.labId)?.name || `#${order.labId}`}
+                        {order.labName || `#${order.labId}`}
                       </p>
                     </div>
                   </div>

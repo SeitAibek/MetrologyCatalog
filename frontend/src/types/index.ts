@@ -80,6 +80,10 @@ export interface Order {
   serviceId: number;
   labId: number;
   assignedLabId?: number;
+  // Имена связанных сущностей — списки показывают их вместо id.
+  serviceName?: string;
+  labName?: string;
+  clientName?: string;
   assignedAt?: string;
   status: OrderStatus;
   // null = финансист ещё не объявил цену

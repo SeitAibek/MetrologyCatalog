@@ -140,6 +140,45 @@ def _apply_if_present(request, obj, field):
         setattr(obj, field, request.data.get(field))
 
 
+# Форматы из макета заказчика: Pdf, Scan, Jpeg, Jpg, Rar. "Scan" — не формат,
+# а вид документа (скан), поэтому в списке расширений его нет.
+ALLOWED_ATTACHMENT_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".rar")
+
+# Расширения мало: имя задаёт загружающий. Сигнатура — то немногое, что можно
+# проверить в содержимом без сторонних библиотек, и она отсекает случай "HTML
+# внутри файла с именем .pdf".
+ATTACHMENT_SIGNATURES = {
+    ".pdf": (b"%PDF-",),
+    ".jpg": (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+    ".rar": (b"Rar!\x1a\x07",),
+}
+
+
+def _validate_attachment_format(file_data, file_name, label="Файл"):
+    """Проверяет расширение по allowlist и сигнатуру содержимого."""
+    name = (file_name or "").strip().lower()
+    if not name.endswith(ALLOWED_ATTACHMENT_EXTENSIONS):
+        allowed = ", ".join(e.lstrip(".").upper() for e in ALLOWED_ATTACHMENT_EXTENSIONS)
+        return Response(
+            {"message": f"{label}: недопустимый формат файла. Разрешены: {allowed}"},
+            status=400,
+        )
+
+    file_bytes, decode_err = _decode_base64_or_error(file_data, label)
+    if decode_err:
+        return decode_err
+
+    ext = "." + name.rsplit(".", 1)[-1]
+    signatures = ATTACHMENT_SIGNATURES.get(ext, ())
+    if signatures and not file_bytes.startswith(signatures):
+        return Response(
+            {"message": f"{label}: содержимое не соответствует формату {ext.lstrip('.').upper()}"},
+            status=400,
+        )
+    return None
+
+
 def _decode_base64_or_error(data, label="Файл"):
     # Битый base64 (например, оборванная загрузка) иначе валит decode необработанным
     # исключением (500) вместо понятного ответа клиенту.
@@ -258,13 +297,13 @@ def orders_list(request):
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
     if power_of_attorney_file:
-        _, decode_err = _decode_base64_or_error(power_of_attorney_file, "Доверенность")
-        if decode_err:
-            return decode_err
+        format_err = _validate_attachment_format(power_of_attorney_file, power_of_attorney_file_name, "Доверенность")
+        if format_err:
+            return format_err
     if tech_documentation_file:
-        _, decode_err = _decode_base64_or_error(tech_documentation_file, "Документация на СИ")
-        if decode_err:
-            return decode_err
+        format_err = _validate_attachment_format(tech_documentation_file, tech_documentation_file_name, "Документация на СИ")
+        if format_err:
+            return format_err
 
     items_error = _validate_order_items(order_items)
     if items_error:
@@ -378,13 +417,15 @@ def save_draft(request, id):
         _apply_if_present(request, order, field)
 
     if request.data.get("power_of_attorney_file"):
-        _, decode_err = _decode_base64_or_error(order.power_of_attorney_file, "Доверенность")
-        if decode_err:
-            return decode_err
+        format_err = _validate_attachment_format(
+            order.power_of_attorney_file, order.power_of_attorney_file_name, "Доверенность")
+        if format_err:
+            return format_err
     if request.data.get("tech_documentation_file"):
-        _, decode_err = _decode_base64_or_error(order.tech_documentation_file, "Документация на СИ")
-        if decode_err:
-            return decode_err
+        format_err = _validate_attachment_format(
+            order.tech_documentation_file, order.tech_documentation_file_name, "Документация на СИ")
+        if format_err:
+            return format_err
 
     order.service_id = service_id
     order.lab_id = lab_id
@@ -715,9 +756,9 @@ def upload_receipt(request, id):
         return Response({"message": "Имя файла обязательно"}, status=400)
     if len(file_data) > 7_000_000:
         return Response({"message": "Файл слишком большой. Максимум 5MB"}, status=400)
-    _, decode_err = _decode_base64_or_error(file_data, "Файл чека")
-    if decode_err:
-        return decode_err
+    format_err = _validate_attachment_format(file_data, file_name, "Файл чека")
+    if format_err:
+        return format_err
 
     order.payment_receipt = file_data
     order.payment_receipt_name = file_name
@@ -913,12 +954,12 @@ def submit_expertise(request, id):
         return Response({"message": "Экспертное заключение обязательно"}, status=400)
     if len(test_program_file) > 10_000_000 or len(type_description_file) > 10_000_000:
         return Response({"message": "Файл слишком большой. Максимум 10MB"}, status=400)
-    _, decode_err = _decode_base64_or_error(test_program_file, "Проект программы испытаний")
-    if decode_err:
-        return decode_err
-    _, decode_err = _decode_base64_or_error(type_description_file, "Проект описания типа")
-    if decode_err:
-        return decode_err
+    format_err = _validate_attachment_format(test_program_file, test_program_file_name, "Проект программы испытаний")
+    if format_err:
+        return format_err
+    format_err = _validate_attachment_format(type_description_file, type_description_file_name, "Проект описания типа")
+    if format_err:
+        return format_err
 
     order.test_program_draft_file = test_program_file
     order.test_program_draft_file_name = test_program_file_name
@@ -969,9 +1010,9 @@ def contract_detail(request, order_id):
         return Response({"message": "Имя файла обязательно"}, status=400)
     if len(file_data) > 10_000_000:
         return Response({"message": "Файл слишком большой. Максимум 7MB"}, status=400)
-    _, decode_err = _decode_base64_or_error(file_data, "Файл договора")
-    if decode_err:
-        return decode_err
+    format_err = _validate_attachment_format(file_data, file_name, "Файл договора")
+    if format_err:
+        return format_err
 
     contract, _ = Contract.objects.get_or_create(
         order_id=order_id,

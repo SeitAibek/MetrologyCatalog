@@ -144,6 +144,11 @@ def _apply_if_present(request, obj, field):
 # а вид документа (скан), поэтому в списке расширений его нет.
 ALLOWED_ATTACHMENT_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".rar")
 
+# Предел длины base64-строки. Тот же порядок, что у договора и черновиков
+# экспертизы; фактический потолок сегодня ниже — тело запроса режет сам Django
+# (DATA_UPLOAD_MAX_MEMORY_SIZE, 2.5 МБ по умолчанию, в settings не переопределён).
+MAX_ATTACHMENT_BASE64_LEN = 10_000_000
+
 # Расширения мало: имя задаёт загружающий. Сигнатура — то немногое, что можно
 # проверить в содержимом без сторонних библиотек, и она отсекает случай "HTML
 # внутри файла с именем .pdf".
@@ -297,10 +302,14 @@ def orders_list(request):
     if not order_items:
         return Response({"message": "Добавьте хотя бы один прибор"}, status=400)
     if power_of_attorney_file:
+        if len(power_of_attorney_file) > MAX_ATTACHMENT_BASE64_LEN:
+            return Response({"message": "Доверенность: файл слишком большой"}, status=400)
         format_err = _validate_attachment_format(power_of_attorney_file, power_of_attorney_file_name, "Доверенность")
         if format_err:
             return format_err
     if tech_documentation_file:
+        if len(tech_documentation_file) > MAX_ATTACHMENT_BASE64_LEN:
+            return Response({"message": "Документация на СИ: файл слишком большой"}, status=400)
         format_err = _validate_attachment_format(tech_documentation_file, tech_documentation_file_name, "Документация на СИ")
         if format_err:
             return format_err
@@ -417,11 +426,15 @@ def save_draft(request, id):
         _apply_if_present(request, order, field)
 
     if request.data.get("power_of_attorney_file"):
+        if len(order.power_of_attorney_file or "") > MAX_ATTACHMENT_BASE64_LEN:
+            return Response({"message": "Доверенность: файл слишком большой"}, status=400)
         format_err = _validate_attachment_format(
             order.power_of_attorney_file, order.power_of_attorney_file_name, "Доверенность")
         if format_err:
             return format_err
     if request.data.get("tech_documentation_file"):
+        if len(order.tech_documentation_file or "") > MAX_ATTACHMENT_BASE64_LEN:
+            return Response({"message": "Документация на СИ: файл слишком большой"}, status=400)
         format_err = _validate_attachment_format(
             order.tech_documentation_file, order.tech_documentation_file_name, "Документация на СИ")
         if format_err:

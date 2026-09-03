@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { orderApi, contractApi, serviceApi, pdfApi, messageApi } from '../services/api';
 import api from '../services/api';
-import type { Order, Service, Laboratory, OrderItem, Message, OrderStatus } from '../types';
+import type { Order, Service, Laboratory, OrderItem, Message, OrderStatus, CustomFieldValues } from '../types';
 import { downloadCertificate } from '../utils/download';
+import CustomFieldsForm from '../components/CustomFieldsForm';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '../constants/orderStatus';
 
 export default function Orders() {
@@ -52,10 +53,12 @@ export default function Orders() {
 
   // Модалка исправления заявки — клиент при revision
   const [resubmitOrder, setResubmitOrder] = useState<Order | null>(null);
+  // customFieldsValues живёт по каждой позиции отдельно, а не одним общим
+  // стейтом на модалку - позиций может быть несколько, и у каждой свой набор
+  // значений по схеме услуги (см. handleAddResubmitItem/handleOpenResubmit).
   const [resubmitItems, setResubmitItems] = useState<Array<{
     id?: number; deviceType: string; model: string; serialNumber: string; quantity: number;
-    manufacturerName: string; manufacturerAddress: string; manufacturerCountry: string;
-    metrologicalCharacteristics: string;
+    customFieldsValues: CustomFieldValues;
   }>>([]);
   const [resubmitForm, setResubmitForm] = useState({ serviceId: '', labId: '', dueDate: '', clientComment: '' });
   const [resubmitLoading, setResubmitLoading] = useState(false);
@@ -324,15 +327,14 @@ export default function Orders() {
         model: item.model || '',
         serialNumber: item.serialNumber,
         quantity: item.quantity,
-        manufacturerName: item.manufacturerName || '',
-        manufacturerAddress: item.manufacturerAddress || '',
-        manufacturerCountry: item.manufacturerCountry || '',
-        metrologicalCharacteristics: item.metrologicalCharacteristics || '',
+        // Значения существующей позиции подтягиваются из сохранённых данных,
+        // а не открываются пустыми - тот же класс бага, что чинили в Б3.
+        customFieldsValues: item.customFieldsValues || {},
       })));
     } catch {
       setResubmitItems([{
         deviceType: '', model: '', serialNumber: '', quantity: 1,
-        manufacturerName: '', manufacturerAddress: '', manufacturerCountry: '', metrologicalCharacteristics: '',
+        customFieldsValues: {},
       }]);
     }
   };
@@ -341,10 +343,14 @@ export default function Orders() {
     setResubmitItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
   };
 
+  const handleResubmitItemCustomFieldsChange = (index: number, values: CustomFieldValues) => {
+    setResubmitItems(prev => prev.map((item, i) => i === index ? { ...item, customFieldsValues: values } : item));
+  };
+
   const handleAddResubmitItem = () => {
     setResubmitItems(prev => [...prev, {
       deviceType: '', model: '', serialNumber: '', quantity: 1,
-      manufacturerName: '', manufacturerAddress: '', manufacturerCountry: '', metrologicalCharacteristics: '',
+      customFieldsValues: {},
     }]);
   };
 
@@ -357,13 +363,27 @@ export default function Orders() {
   const handleResubmit = async () => {
     if (!resubmitOrder) return;
 
-    const hasEmptyRequiredField = resubmitItems.some(item =>
-      !item.deviceType || !item.serialNumber || !item.manufacturerName ||
-      !item.manufacturerAddress || !item.manufacturerCountry || !item.metrologicalCharacteristics
-    );
-    if (hasEmptyRequiredField) {
+    const hasEmptyBasicField = resubmitItems.some(item => !item.deviceType || !item.serialNumber);
+    if (hasEmptyBasicField) {
       setError('Заполните все обязательные поля приборов');
       return;
+    }
+
+    // Как на бэкенде (_validate_custom_fields): required проверяется по схеме
+    // ВЫБРАННОЙ в форме услуги (resubmitSchema), не по захардкоженному
+    // списку, и по всем позициям, не только по первой. .trim() - фронтовый
+    // эквивалент .strip(), чтобы вердикт совпадал по обе стороны.
+    for (let i = 0; i < resubmitItems.length; i++) {
+      const missingField = resubmitSchema.find(field => {
+        if (!field.required) return false;
+        const value = resubmitItems[i].customFieldsValues[field.key];
+        return value === undefined || value === null || String(value).trim() === '';
+      });
+      if (missingField) {
+        const prefix = resubmitItems.length > 1 ? `Прибор ${i + 1}: ` : '';
+        setError(`${prefix}Заполните поле «${missingField.label}»`);
+        return;
+      }
     }
 
     try {
@@ -378,10 +398,7 @@ export default function Orders() {
           model: item.model,
           serialNumber: item.serialNumber,
           quantity: item.quantity,
-          manufacturerName: item.manufacturerName,
-          manufacturerAddress: item.manufacturerAddress,
-          manufacturerCountry: item.manufacturerCountry,
-          metrologicalCharacteristics: item.metrologicalCharacteristics,
+          customFieldsValues: item.customFieldsValues,
         })),
       });
       setResubmitOrder(null);
@@ -433,6 +450,12 @@ export default function Orders() {
 
   const inputClass = "w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm bg-white outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all";
   const selectClass = "w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm bg-white outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all cursor-pointer";
+
+  // Одна схема на все позиции формы - услуги, выбранной прямо в этой форме
+  // (resubmitForm.serviceId), а не исходной услуги заявки: клиент может
+  // сменить услугу здесь же, и раз именно это значение уходит в запрос,
+  // схема должна быть от него же, иначе фронт и бэк разойдутся в вердикте.
+  const resubmitSchema = services.find(s => s.id === parseInt(resubmitForm.serviceId))?.customFieldsSchema ?? [];
 
   if (isLoading) {
     return (
@@ -1170,37 +1193,12 @@ export default function Orders() {
                             onChange={e => handleResubmitItemChange(index, 'quantity', parseInt(e.target.value) || 1)}
                             className={inputClass} style={{ fontFamily: 'inherit', marginBottom: 0 }} />
                         </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Производитель *</label>
-                          <input type="text" value={item.manufacturerName}
-                            onChange={e => handleResubmitItemChange(index, 'manufacturerName', e.target.value)}
-                            placeholder="Наименование завода-изготовителя" className={inputClass}
-                            style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Адрес производства *</label>
-                          <input type="text" value={item.manufacturerAddress}
-                            onChange={e => handleResubmitItemChange(index, 'manufacturerAddress', e.target.value)}
-                            placeholder="Адрес завода-изготовителя" className={inputClass}
-                            style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Страна производства *</label>
-                          <input type="text" value={item.manufacturerCountry}
-                            onChange={e => handleResubmitItemChange(index, 'manufacturerCountry', e.target.value)}
-                            placeholder="Страна изготовления" className={inputClass}
-                            style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Метрологические характеристики *</label>
-                        <textarea value={item.metrologicalCharacteristics}
-                          onChange={e => handleResubmitItemChange(index, 'metrologicalCharacteristics', e.target.value)}
-                          placeholder="Диапазон измерений, погрешность, класс точности и т.д."
-                          rows={2}
-                          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 text-sm outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 transition-all bg-white resize-none"
-                          style={{ fontFamily: 'inherit', marginBottom: 0 }} />
-                      </div>
+                      <CustomFieldsForm
+                        schema={resubmitSchema}
+                        values={item.customFieldsValues}
+                        onChange={values => handleResubmitItemCustomFieldsChange(index, values)}
+                      />
                     </div>
                   ))}
                 </div>

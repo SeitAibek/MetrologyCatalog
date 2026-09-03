@@ -542,6 +542,8 @@ def resubmit_order(request, id):
     if err:
         return err
 
+    if order.client_id != request.user.id:
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
     if order.status != "revision":
         return Response(
             {"message": "Повторно отправить можно только заявку в статусе 'revision'"},
@@ -630,6 +632,8 @@ def upload_receipt(request, id):
     if err:
         return err
 
+    if order.client_id != request.user.id:
+        return Response({"message": "Заявка вам не принадлежит"}, status=403)
     if order.status != "awaiting_payment":
         return Response(
             {"message": "Чек можно загрузить только для заявки в статусе 'awaiting_payment'"},

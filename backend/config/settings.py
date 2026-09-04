@@ -11,7 +11,10 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -37,11 +40,38 @@ JWT_SECRET = os.environ.get("JWT_SECRET")
 JWT_EXPIRATION_MS = int(os.environ.get("JWT_EXPIRATION_MS", 86400000))
 
 
-EXECUTOR_NAME = os.environ.get("EXECUTOR_NAME", "ТОО Метрологическая служба")
+# Реквизиты исполнителя — печатаются в договоре и счёте. Дефолта нет ни у
+# одного, включая название: правдоподобная заглушка в юридическом документе
+# незаметнее пустой строки, а незаметный дефект уезжает заказчику.
+EXECUTOR_NAME = os.environ.get("EXECUTOR_NAME", "")
 EXECUTOR_BIN = os.environ.get("EXECUTOR_BIN", "")
 EXECUTOR_ADDRESS = os.environ.get("EXECUTOR_ADDRESS", "")
 EXECUTOR_PHONE = os.environ.get("EXECUTOR_PHONE", "")
 EXECUTOR_BANK = os.environ.get("EXECUTOR_BANK", "")
+
+_missing_executor_details = [
+    name for name, value in (
+        ("EXECUTOR_NAME", EXECUTOR_NAME),
+        ("EXECUTOR_BIN", EXECUTOR_BIN),
+        ("EXECUTOR_ADDRESS", EXECUTOR_ADDRESS),
+        ("EXECUTOR_PHONE", EXECUTOR_PHONE),
+        ("EXECUTOR_BANK", EXECUTOR_BANK),
+    )
+    if not value.strip()
+]
+if _missing_executor_details:
+    # Пустой реквизит ничего не ломает: PDF собирается без ошибок, в бланке
+    # просто печатается подпись без значения — и это видно уже заказчику.
+    # Поэтому прод не поднимается вовсе, а локальной разработке, где бланк
+    # смотрит сам разработчик, хватает предупреждения.
+    _executor_message = (
+        "Не заданы реквизиты исполнителя, они печатаются в договоре и счёте. "
+        "Впишите в backend/.env: " + ", ".join(_missing_executor_details)
+    )
+    if DEBUG:
+        print(f"ВНИМАНИЕ: {_executor_message}", file=sys.stderr)
+    else:
+        raise ImproperlyConfigured(_executor_message)
 
 
 # Потолок тела запроса. Вложения уходят в JSON base64-строкой, то есть в 4/3

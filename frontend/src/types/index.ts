@@ -87,6 +87,8 @@ export interface Order {
   assignedLabName?: string;
   clientName?: string;
   assignedAt?: string;
+  // Момент подачи. Пусто у заявок, заведённых до появления колонки.
+  createdAt?: string;
   status: OrderStatus;
   // null = финансист ещё не объявил цену
   price?: number | null;

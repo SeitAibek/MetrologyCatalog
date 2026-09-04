@@ -63,6 +63,12 @@ class Order(models.Model):
     custom_fields_schema = models.JSONField(default=list, blank=True)
     custom_fields_values = models.JSONField(default=dict, blank=True)
 
+    # Момент подачи. null=True не ради новых заявок — им дату проставит
+    # auto_now_add, — а ради заведённых до появления колонки: у части из них
+    # даты нет и взять её неоткуда, и пустое поле честнее, чем момент
+    # применения миграции, выданный за дату подачи.
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+
     class Meta:
         db_table = "orders"
 

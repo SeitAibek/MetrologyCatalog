@@ -32,7 +32,7 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = [
             "id", "order_number", "client_id", "service_id", "lab_id", "assigned_lab_id",
             "service_name", "lab_name", "client_name", "assigned_lab_name",
-            "assigned_at", "status", "price", "due_date", "metrologist_id",
+            "created_at", "assigned_at", "status", "price", "due_date", "metrologist_id",
             "payment_comment", "client_comment", "manager_comment",
             "invoice_sent", "payment_receipt_name", "receipt_uploaded_at",
             "power_of_attorney_file_name", "tech_documentation_file_name",

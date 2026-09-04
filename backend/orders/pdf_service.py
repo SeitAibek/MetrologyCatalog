@@ -33,6 +33,39 @@ def _link_callback(uri, rel):
     return str(settings.BASE_DIR / uri.lstrip("/"))
 
 
+def _order_items_context(order):
+    """Позиции заявки для документов: регулярные поля прибора плюс
+    дополнительные — из СНИМКА схемы, снятого при подаче, а не из текущего
+    шаблона услуги. Документ по старой заявке должен выглядеть так, как её
+    заполняли, даже если менеджер потом поменял шаблон.
+
+    Значения, ключей которых в снимке нет (шаблон менялся), не печатаются —
+    подписи для них взять неоткуда. Поле снимка с пустым значением печатается
+    прочерком: в бланке исчезнувшая строка выглядит так, будто поле не
+    запрашивали, а прочерк честно показывает "запрошено, не заполнено".
+    """
+    items = []
+    for item in order.orderitem_set.all().order_by("id"):
+        values = item.custom_fields_values or {}
+        extra = []
+        for field in item.custom_fields_schema or []:
+            key = field.get("key")
+            if not key:
+                continue
+            raw = values.get(key)
+            text = "" if raw is None else str(raw).strip()
+            extra.append({"label": field.get("label") or key, "value": text or "—"})
+
+        items.append({
+            "device_type": item.device_type or "—",
+            "model": item.model or "—",
+            "serial_number": item.serial_number or "—",
+            "quantity": item.quantity,
+            "extra": extra,
+        })
+    return items
+
+
 def generate_contract_pdf(order, contract) -> bytes:
     client = order.client
     service = order.service
@@ -46,6 +79,7 @@ def generate_contract_pdf(order, contract) -> bytes:
         "service_name": service.name if service else "—",
         "service_description": service.description if service and service.description else "—",
         "service_standard": service.standard if service and service.standard else "—",
+        "order_items": _order_items_context(order),
         "executor_name": settings.EXECUTOR_NAME,
         "executor_bin": settings.EXECUTOR_BIN,
         "executor_address": settings.EXECUTOR_ADDRESS,
@@ -72,6 +106,7 @@ def generate_certificate_pdf(order, result) -> bytes:
         "order": order,
         "result": result,
         "document_title": document_title,
+        "order_items": _order_items_context(order),
     }
 
     html = render_to_string("pdf/certificate.html", context)

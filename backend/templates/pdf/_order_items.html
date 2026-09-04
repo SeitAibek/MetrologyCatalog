@@ -1,0 +1,28 @@
+{% comment %}
+Блок приборов заявки. Включается и в договор, и в сертификат — раскладка одна,
+правится в одном месте. Ожидает в контексте order_items из
+pdf_service._order_items_context: регулярные поля прибора и extra —
+дополнительные поля из снимка схемы, уже с подставленными прочерками.
+
+Таблица на каждый прибор своя, заголовок «Прибор N из M» — первая строка этой
+же таблицы. repeat="1" — атрибут xhtml2pdf, он же repeatRows у reportlab:
+CSS page-break-inside библиотека не читает вовсе (таблицы всегда splitByRow),
+а repeatRows даёт две нужные гарантии. Одна: reportlab не делит таблицу так,
+чтобы на странице осталась только шапка, — заголовок не оторвётся от полей.
+Вторая: если набор полей всё-таки не влез, заголовок повторяется сверху
+продолжения, и на второй странице видно, чей это прибор.
+{% endcomment %}
+{% for item in order_items %}
+    <table{% if order_items|length > 1 %} repeat="1"{% endif %}>
+        {% if order_items|length > 1 %}
+        <tr><td class="item-title" colspan="2">Прибор {{ forloop.counter }} из {{ order_items|length }}</td></tr>
+        {% endif %}
+        <tr><td class="label">Тип прибора:</td><td>{{ item.device_type }}</td></tr>
+        <tr><td class="label">Модель:</td><td>{{ item.model }}</td></tr>
+        <tr><td class="label">Серийный номер:</td><td>{{ item.serial_number }}</td></tr>
+        <tr><td class="label">Количество:</td><td>{{ item.quantity }}</td></tr>
+        {% for field in item.extra %}
+        <tr><td class="label">{{ field.label }}:</td><td>{{ field.value|linebreaksbr }}</td></tr>
+        {% endfor %}
+    </table>
+{% endfor %}

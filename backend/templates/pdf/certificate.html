@@ -13,6 +13,7 @@
     td { border: 1px solid #999; padding: 6px; vertical-align: top; font-size: 9pt; }
     td.label { font-weight: bold; width: 40%; }
     .italic-gray { font-style: italic; color: #888; }
+    td.item-title { font-weight: bold; text-align: center; background-color: #eee; }
 </style>
 </head>
 <body>
@@ -22,11 +23,16 @@
     <table>
         <tr><td class="label">Номер заказа:</td><td>{{ order.order_number }}</td></tr>
         <tr><td class="label">Статус:</td><td>{{ order.status }}</td></tr>
-        <tr><td class="label">Стоимость:</td><td>{{ order.total_price }} тг</td></tr>
+        <tr><td class="label">Стоимость:</td><td>{% if order.price %}{{ order.price }} тг{% else %}—{% endif %}</td></tr>
         {% if order.due_date %}
         <tr><td class="label">Срок исполнения:</td><td>{{ order.due_date|date:"d.m.Y" }}</td></tr>
         {% endif %}
     </table>
+
+    {% if order_items %}
+    <h2>Объект поверки</h2>
+    {% include "pdf/_order_items.html" %}
+    {% endif %}
 
     {% if result %}
     <h2>Результат поверки</h2>

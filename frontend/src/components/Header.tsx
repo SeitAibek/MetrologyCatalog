@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { notificationApi } from '../services/api';
 import type { Notification } from '../types';
+import Brand from './Brand';
 
 const NOTIFICATION_ICONS: Record<string, string> = {
   order_status:      '📋',
@@ -97,23 +98,21 @@ export default function Header() {
 
   return (
     <>
-      <header className="bg-white border-b border-gray-100 px-4 h-[60px] flex items-center justify-between sticky top-0 z-50 shadow-sm">
+      {/* Рамки снизу нет намеренно: при box-sizing: border-box она съедала бы
+          пиксель из высоты brand-bar, и логотип вставал бы на полпикселя выше,
+          чем на остальных страницах. Шапку отделяет тень. */}
+      <header className="bg-white brand-bar pr-4 justify-between sticky top-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
+          {/* Логотип стоит первым, отступ от края окна задаёт brand-bar.
+              Кнопка меню — после него: стоя перед логотипом, она сдвигала бы
+              его вправо на узких экранах, и точка переставала быть общей. */}
+          <Brand onClick={() => navigateTo('/')} />
           <button className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 border-none cursor-pointer"
             style={{ marginBottom: 0, background: 'none' }} onClick={() => setSidebarOpen(!sidebarOpen)}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path d="M4 5h16M4 12h16M4 19h16"/>
             </svg>
           </button>
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigateTo('/')}>
-            <div className="w-8 h-8 bg-gradient-to-br from-[#0A2E5C] to-[#00B2FF] rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </div>
-            <span className="font-bold text-[#0A2E5C] text-lg hidden sm:block">MetrologyCatalog</span>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">

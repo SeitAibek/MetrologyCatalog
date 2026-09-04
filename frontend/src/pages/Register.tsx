@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import Brand from '../components/Brand';
 import { authApi } from '../services/api';
 
 export default function Register() {
@@ -71,22 +72,20 @@ export default function Register() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex" style={{ marginLeft: 0 }}>
+      {/* Логотип в той же точке, что и в шапке приложения: полоса той же
+          высоты, отступ от края окна — из brand-bar. На широком экране под
+          логотипом тёмная панель, поэтому там вариант для тёмного фона. */}
+      <div className="brand-bar fixed top-0 left-0 z-30">
+        <Brand variant="onDark" className="hidden lg:flex" onClick={() => navigate('/')} />
+        <Brand className="lg:hidden" onClick={() => navigate('/')} />
+      </div>
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
         style={{ background: 'linear-gradient(135deg, #0A2E5C 0%, #1E4A7C 50%, #0A2E5C 100%)' }}>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-10 w-72 h-72 bg-[#00B2FF] rounded-full blur-3xl" />
           <div className="absolute bottom-20 right-10 w-96 h-96 bg-[#00B2FF] rounded-full blur-3xl" />
         </div>
-        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-            <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </div>
-            <span className="text-white font-bold text-xl">MetrologyCatalog</span>
-          </div>
+        <div className="relative z-10 flex flex-col justify-end p-12 w-full">
           <div>
             <h2 className="text-4xl font-bold text-white mb-4" style={{ margin: '0 0 16px', fontSize: '2rem' }}>
               Цифровая метрология для вашего бизнеса
@@ -114,18 +113,8 @@ export default function Register() {
         </div>
       </div>
 
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 overflow-y-auto">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 overflow-y-auto brand-bar-offset">
         <div className="w-full max-w-md py-8">
-          <div className="flex items-center gap-3 mb-8 lg:hidden cursor-pointer" onClick={() => navigate('/')}>
-            <div className="w-9 h-9 bg-gradient-to-br from-[#0A2E5C] to-[#00B2FF] rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold text-[#0A2E5C]">MetrologyCatalog</span>
-          </div>
-
           <h1 className="text-2xl font-bold text-[#0A2E5C] mb-2" style={{ margin: '0 0 8px', fontSize: '1.75rem' }}>
             Регистрация
           </h1>

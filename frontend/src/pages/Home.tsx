@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Fuse from 'fuse.js';
 import { useAuthStore } from '../store/authStore';
 import { serviceApi } from '../services/api';
+import Brand from '../components/Brand';
 
 interface Service {
   id: number;
@@ -83,21 +84,17 @@ export default function Home() {
 
       {/* Navbar */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-[#0A2E5C] to-[#00B2FF] rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              </div>
-              <span className="text-xl font-bold text-[#0A2E5C]">MetrologyCatalog</span>
-            </div>
+        {/* Логотип вынесен из центрированного контейнера и отсчитывается от
+            края окна: внутри max-w-7xl mx-auto на широком экране он уезжал бы
+            вместе с контейнером. Его место в контейнере держит невидимая
+            копия — от неё зависит положение навигации, и оно не сдвигается. */}
+        <div className="brand-bar relative">
+          <Brand onClick={() => navigate('/')} />
+          <div className="absolute inset-0 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between pointer-events-none">
+            <div aria-hidden className="invisible"><Brand /></div>
 
             {/* Nav links */}
-            <nav className="hidden md:flex items-center gap-8">
+            <nav className="hidden md:flex items-center gap-8 pointer-events-auto">
               <button 
                 onClick={() => scrollTo('services')} 
                 className="text-sm font-medium text-gray-600 hover:text-[#00B2FF] transition-colors bg-transparent border-none cursor-pointer p-0"
@@ -117,7 +114,7 @@ export default function Home() {
             </nav>
 
             {/* Auth buttons */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pointer-events-auto">
               {isAuthenticated ? (
                 <>
                   <button
@@ -436,10 +433,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-3 gap-8">
             <div className="col-span-1">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 bg-gradient-to-br from-[#00B2FF] to-[#0095D9] rounded-lg flex items-center justify-center text-lg">⚙️</div>
-                <span className="text-xl font-bold">MetrologyCatalog</span>
-              </div>
+              <Brand variant="onDark" className="mb-4" />
               <p className="text-white/60 text-sm leading-relaxed" style={{ margin: 0 }}>
                 Единая цифровая платформа метрологических услуг. Поверка, калибровка и испытания средств измерений онлайн.
               </p>

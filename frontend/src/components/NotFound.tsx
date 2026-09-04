@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import Brand from './Brand';
 
 interface NotFoundProps {
   code?: number; // 404 по умолчанию, передаётся 403 для страницы запрета доступа
@@ -10,7 +11,7 @@ interface NotFoundProps {
 // 404 — страница не найдена
 export default function NotFound({ code = 404 }: NotFoundProps) {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
 
   // Перенаправляет пользователя на главную страницу его роли
   const goHome = () => {
@@ -26,6 +27,13 @@ export default function NotFound({ code = 404 }: NotFoundProps) {
 
   return (
     <div style={{ textAlign: 'center', marginTop: '100px' }}>
+      {/* Неавторизованному шапку приложения не показывают, а логотип на
+          странице ошибки должен стоять там же, где на всех остальных. */}
+      {!isAuthenticated && (
+        <div className="brand-bar fixed top-0 left-0">
+          <Brand onClick={() => navigate('/')} />
+        </div>
+      )}
       <h1>{code}</h1>
       <p>{code === 403 ? 'У вас нет доступа к этой странице.' : 'Страница не найдена.'}</p>
       <button

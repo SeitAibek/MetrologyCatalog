@@ -423,8 +423,13 @@ export default function Orders() {
   };
 
   const filteredOrders = filterStatus ? orders.filter(o => o.status === filterStatus) : orders;
-  const formatDate = (dateString?: string) =>
-    dateString ? new Date(dateString).toLocaleDateString('ru-RU') : 'Не указана';
+  // Дата подачи заявки. Отдельного поля под неё в базе нет, но номер
+  // генерируется как ORD-<epoch_ms> — дата берётся оттуда. Если формат номера
+  // изменится, здесь встанет прочерк, а не неверная дата.
+  const createdDate = (orderNumber: string) => {
+    const ms = /^ORD-(\d{13})$/.exec(orderNumber)?.[1];
+    return ms ? new Date(Number(ms)).toLocaleDateString('ru-RU') : '—';
+  };
   const getStatusClass = (status: OrderStatus) =>
     statusColors[status] ?? { bg: 'bg-gray-100', text: 'text-gray-500' };
 
@@ -583,12 +588,14 @@ export default function Orders() {
                   {/* Детали */}
                   <div className="bg-gray-50 rounded-xl p-4 mb-4 grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
-                      <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Плановая дата</p>
-                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{formatDate(order.dueDate)}</p>
+                      <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Дата создания</p>
+                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{createdDate(order.orderNumber)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Лаборатория</p>
-                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{order.labName || `#${order.labId}`}</p>
+                      {/* Лаборатория услуги заполнена всегда — показывать её значило бы
+                          выдавать за выбор то, чего ещё не выбирали. До направления прочерк. */}
+                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{order.assignedLabName || '—'}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Договор</p>

@@ -20,12 +20,18 @@ class OrderSerializer(serializers.ModelSerializer):
     service_name = serializers.CharField(source="service.name", read_only=True)
     lab_name = serializers.CharField(source="lab.name", read_only=True)
     client_name = serializers.CharField(source="client.full_name", read_only=True)
+    # Лаборатория, куда заявку направил директор. Связь пустая до направления,
+    # поэтому default: без него DRF выкинул бы поле из ответа целиком, и клиент
+    # не отличил бы "ещё не назначена" от "поле не пришло".
+    assigned_lab_name = serializers.CharField(
+        source="assigned_lab.name", read_only=True, default=None
+    )
 
     class Meta:
         model = Order
         fields = [
             "id", "order_number", "client_id", "service_id", "lab_id", "assigned_lab_id",
-            "service_name", "lab_name", "client_name",
+            "service_name", "lab_name", "client_name", "assigned_lab_name",
             "assigned_at", "status", "price", "due_date", "metrologist_id",
             "payment_comment", "client_comment", "manager_comment",
             "invoice_sent", "payment_receipt_name", "receipt_uploaded_at",

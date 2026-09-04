@@ -83,6 +83,8 @@ export interface Order {
   // Имена связанных сущностей — списки показывают их вместо id.
   serviceName?: string;
   labName?: string;
+  // Лаборатория, куда заявку направил директор. Пусто, пока не направили.
+  assignedLabName?: string;
   clientName?: string;
   assignedAt?: string;
   status: OrderStatus;

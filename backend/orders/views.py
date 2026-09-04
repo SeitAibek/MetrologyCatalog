@@ -54,7 +54,7 @@ ATTACHMENT_CONTENT_FIELDS = _blob_fields(Order)
 # обращения: без него каждое имя стоило бы запроса на строку — тот самый N+1,
 # которого в SQL до сих пор не было. Contract сюда не входит намеренно: он
 # тянется пакетной ручкой и несёт свою base64-колонку.
-ORDER_NAME_RELATIONS = ("service", "lab", "client")
+ORDER_NAME_RELATIONS = ("service", "lab", "client", "assigned_lab")
 
 
 def _orders_for_list():

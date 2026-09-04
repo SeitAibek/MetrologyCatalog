@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { contractApi, laboratoryApi } from '../services/api';
+import { contractApi } from '../services/api';
 import api from '../services/api';
-import type { Order, Contract, Laboratory } from '../types';
+import type { Order, Contract } from '../types';
 
 export default function GenDirector() {
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'sign' | 'assign'>('sign');
 
   // Заявки где тройка + клиент уже подписали, ген.дир ещё нет
   const [signOrders, setSignOrders] = useState<Order[]>([]);
   const [contracts, setContracts] = useState<Record<number, Contract>>({});
-  const [assignOrders, setAssignOrders] = useState<Order[]>([]);
-  const [laboratories, setLaboratories] = useState<Laboratory[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -22,23 +19,13 @@ export default function GenDirector() {
   const [rejecting, setRejecting] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState<Record<number, string>>({});
   const [downloadingContract, setDownloadingContract] = useState<number | null>(null);
-  const [selectedLabs, setSelectedLabs] = useState<Record<number, string>>({});
-  const [assigning, setAssigning] = useState<number | null>(null);
 
   useEffect(() => { fetchAll(); }, []);
 
   const fetchAll = async () => {
     try {
       setIsLoading(true);
-      // Загружаем заявки в awaiting_approval + awaiting_delivery
-      const [approvalRes, deliveryRes, labRes] = await Promise.all([
-        api.get('/orders/status/awaiting_approval'),
-        api.get('/orders/status/awaiting_delivery'),
-        laboratoryApi.getAll(),
-      ]);
-
-      setAssignOrders(deliveryRes.data);
-      setLaboratories(labRes.data);
+      const approvalRes = await api.get('/orders/status/awaiting_approval');
 
       // Загружаем договоры и фильтруем: только те где тройка + клиент подписали
       const allOrders: Order[] = approvalRes.data;
@@ -117,27 +104,7 @@ export default function GenDirector() {
     }
   };
 
-  const handleAssign = async (orderId: number) => {
-    const labId = parseInt(selectedLabs[orderId] || '');
-    if (!labId) { setError('Выберите лабораторию'); return; }
-    if (!window.confirm('Направить заявку в выбранную лабораторию?')) return;
-    try {
-      setAssigning(orderId);
-      await api.put(`/orders/${orderId}/assign-lab`, { labId });
-      setAssignOrders(prev => prev.filter(o => o.id !== orderId));
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Ошибка при направлении');
-    } finally {
-      setAssigning(null);
-    }
-  };
-
   const formatDate = (d?: string) => d ? new Date(d).toLocaleDateString('ru-RU') : 'Не указана';
-
-  const tabClass = (tab: 'sign' | 'assign') =>
-    `px-5 py-2.5 text-sm font-semibold rounded-xl border-none cursor-pointer transition-colors ${
-      activeTab === tab ? 'bg-[#0A2E5C] text-white' : 'bg-white text-gray-500 hover:bg-gray-100'
-    }`;
 
   if (isLoading) {
     return (
@@ -161,7 +128,7 @@ export default function GenDirector() {
             Кабинет генерального директора
           </h1>
           <p className="text-gray-500 text-sm mt-1" style={{ margin: '4px 0 0' }}>
-            Финальное подписание договоров и направление заявок на исполнение
+            Финальное подписание договоров
           </p>
         </div>
 
@@ -175,31 +142,8 @@ export default function GenDirector() {
           </div>
         )}
 
-        <div className="flex gap-2 mb-6">
-          <button onClick={() => setActiveTab('sign')} className={tabClass('sign')} style={{ marginBottom: 0 }}>
-            Финальное подписание
-            {signOrders.length > 0 && (
-              <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
-                {signOrders.length}
-              </span>
-            )}
-          </button>
-          {/* Направление на исполнение теперь требует выбора ИСП (assign_to_lab — только
-              director); ген.директор в этом действии не участвует, вкладка отключена. */}
-          <button disabled title="Направление на исполнение теперь выполняет только директор"
-            className={`${tabClass('assign')} opacity-40 cursor-not-allowed`} style={{ marginBottom: 0 }}>
-            Направить на исполнение
-            {assignOrders.length > 0 && (
-              <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">
-                {assignOrders.length}
-              </span>
-            )}
-          </button>
-        </div>
-
         {/* ── Финальное подписание ────────────────────────────────────────── */}
-        {activeTab === 'sign' && (
-          signOrders.length === 0 ? (
+        {signOrders.length === 0 ? (
             <div className="bg-white border border-gray-100 rounded-2xl p-16 text-center shadow-sm">
               <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -314,66 +258,8 @@ export default function GenDirector() {
                 );
               })}
             </div>
-          )
         )}
 
-        {/* ── Направить на исполнение ─────────────────────────────────────── */}
-        {activeTab === 'assign' && (
-          assignOrders.length === 0 ? (
-            <div className="bg-white border border-gray-100 rounded-2xl p-16 text-center shadow-sm">
-              <p className="text-gray-400">Нет заявок ожидающих направления</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {assignOrders.map(order => (
-                <div key={order.id} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-                    <h3 className="font-bold text-[#0A2E5C]" style={{ margin: 0, fontSize: '1rem' }}>
-                      Заявка #{order.orderNumber}
-                    </h3>
-                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-700">
-                      Ожидает направления
-                    </span>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-4 mb-4 grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Плановая дата</p>
-                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>{formatDate(order.dueDate)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5" style={{ margin: '0 0 2px' }}>Запрошена лаб.</p>
-                      <p className="text-sm font-semibold text-gray-700" style={{ margin: 0 }}>
-                        {order.labName || `#${order.labId}`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <select value={selectedLabs[order.id] || ''}
-                      onChange={e => setSelectedLabs(prev => ({ ...prev, [order.id]: e.target.value }))}
-                      className="flex-1 min-w-[200px] px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 bg-white outline-none focus:border-[#00B2FF] focus:ring-2 focus:ring-[#00B2FF]/10 cursor-pointer"
-                      style={{ fontFamily: 'inherit', marginBottom: 0 }}>
-                      <option value="">— Выберите филиал / лабораторию —</option>
-                      {laboratories.map(lab => (
-                        <option key={lab.id} value={lab.id}>
-                          {lab.name}{lab.city ? ` (${lab.city})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <button onClick={() => handleAssign(order.id)}
-                      disabled={!selectedLabs[order.id] || assigning === order.id}
-                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:cursor-not-allowed text-white font-medium rounded-xl border-none cursor-pointer text-sm transition-colors flex items-center gap-2"
-                      style={{ marginBottom: 0 }}>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
-                      </svg>
-                      {assigning === order.id ? 'Направление...' : 'Направить'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        )}
       </div>
     </div>
   );
